@@ -1,0 +1,328 @@
+#!/usr/bin/env bash
+# PStock launcher for Linux (Linux Mint / Ubuntu / Debian).
+#
+#   ./accstock install   first time, from the project folder: .venv + requirements.txt + the `accstock` command
+#   accstock start       start the web app in the background (http://127.0.0.1:8000)
+#   accstock start 8888  same, on port 8888 (stop/status/logs then follow that port automatically)
+#   accstock stop        stop it
+#   accstock restart     stop + start (after updating the code), same port; `accstock restart 8888` moves it
+#   accstock status      running or not, PID, uptime, URL, /health
+#   accstock logs        follow the server log (Ctrl+C to quit)
+#   accstock auto [on|off] [board|daily]   scheduled Telegram sends on/off (works without the app)
+#
+# Settings (optional): pstock.conf next to this script (gitignored), or environment variables, e.g.
+#   PSTOCK_HOST=0.0.0.0   listen on every interface (open from other machines; set APP_API_KEY in .env).
+#                         Without it, APP_HOST from .env is used (as on Windows), else 127.0.0.1 (this machine only).
+#   PSTOCK_PORT=8000      default port (`accstock start <port>` overrides it)
+#   PSTOCK_PYTHON=python3.12   interpreter used to create .venv
+set -uo pipefail
+
+SELF="$(readlink -f "${BASH_SOURCE[0]}")"
+APP_DIR="$(dirname "$SELF")"
+cd "$APP_DIR" || exit 1
+# pstock.conf / .env may have been written on Windows: CRLF line ends are removed before use.
+[ -f "$APP_DIR/pstock.conf" ] && . <(tr -d '\r' < "$APP_DIR/pstock.conf")
+
+# Remove quotes, spaces, tabs, CR and LF from a setting value.
+clean() { printf '%s' "$1" | tr -d "\"' \t\r\n"; }
+
+# Listen address: PSTOCK_HOST (pstock.conf / env) > APP_HOST in .env (same setting as run.bat on Windows) > 127.0.0.1.
+# 0.0.0.0 = every interface, needed to open the app from other machines (http://<this machine's IP>:8000).
+env_value() { [ -f .env ] && clean "$(sed -n "s/^[[:space:]]*$1[[:space:]]*=//p" .env | tr -d '\r' | tail -n 1)"; }
+HOST="$(clean "${PSTOCK_HOST:-}")"
+HOST="${HOST:-$(env_value APP_HOST)}"
+HOST="${HOST:-127.0.0.1}"
+PORT="$(clean "${PSTOCK_PORT:-}")"
+PORT="${PORT:-8000}"
+BASE_PY="$(clean "${PSTOCK_PYTHON:-}")"
+BASE_PY="${BASE_PY:-python3}"
+VENV="$APP_DIR/.venv"
+PY="$VENV/bin/python"
+RUN_DIR="$APP_DIR/data"
+PID_FILE="$RUN_DIR/pstock.pid"
+PORT_FILE="$RUN_DIR/pstock.port"   # port of the running server (written by start)
+LOG_DIR="$RUN_DIR/logs"
+LOG_FILE="$LOG_DIR/server.log"
+BIN_DIR="$HOME/.local/bin"
+# The app works in Vietnam local time (sessions 09:00-15:00, "today"): force it whatever the machine's zone is.
+export TZ="Asia/Ho_Chi_Minh"
+export PYTHONIOENCODING="utf-8"
+
+if [ -t 1 ]; then G=$'\e[32m'; R=$'\e[31m'; Y=$'\e[33m'; B=$'\e[1m'; N=$'\e[0m'; else G=; R=; Y=; B=; N=; fi
+ok()   { echo "${G}✓${N} $*"; }
+warn() { echo "${Y}!${N} $*"; }
+err()  { echo "${R}✗${N} $*" >&2; }
+
+# Addresses to open the app at. 0.0.0.0 = listen on every interface (not a browser address):
+# show 127.0.0.1 plus each IPv4 address of the machine (e.g. 192.168.3.38).
+url() {
+    local h out
+    case "$HOST" in
+        0.0.0.0|::) out="http://127.0.0.1:$PORT"
+                    for h in $(hostname -I 2>/dev/null); do
+                        case "$h" in *:*|127.*|169.254.*) continue ;; esac
+                        out="$out  http://$h:$PORT"
+                    done ;;
+        localhost) out="http://127.0.0.1:$PORT" ;;
+        *) out="http://$HOST:$PORT" ;;
+    esac
+    echo "$out"
+}
+
+# PID of our server, or nothing. The PID file is trusted only if that process really is this app's uvicorn.
+server_pid() {
+    [ -f "$PID_FILE" ] || return 1
+    local pid
+    pid="$(cat "$PID_FILE" 2>/dev/null)"
+    [[ "$pid" =~ ^[0-9]+$ ]] || return 1
+    if kill -0 "$pid" 2>/dev/null && tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null | grep -q "uvicorn app.main:app"; then
+        echo "$pid"
+        return 0
+    fi
+    return 1
+}
+
+# `accstock start <port>`: validate and use it.
+set_port() {
+    [ -n "${1:-}" ] || return 0
+    if [[ ! "$1" =~ ^[0-9]+$ ]] || [ "$1" -lt 1 ] || [ "$1" -gt 65535 ]; then
+        err "Cổng không hợp lệ: $1 (cần số từ 1 đến 65535). Ví dụ: accstock start 8888"
+        exit 2
+    fi
+    PORT="$1"
+}
+
+# stop / status / logs / restart act on the port the running server was started with.
+use_running_port() {
+    local p
+    server_pid >/dev/null || return 0
+    p="$(cat "$PORT_FILE" 2>/dev/null)"
+    [[ "$p" =~ ^[0-9]+$ ]] && PORT="$p"
+    return 0
+}
+
+health() {   # prints the HTTP status of /health (000 = no answer)
+    if command -v curl >/dev/null; then
+        curl -s -o /dev/null -m 3 -w "%{http_code}" "http://127.0.0.1:$PORT/health" 2>/dev/null || true
+    else
+        "$PY" - "$PORT" <<'EOF' 2>/dev/null || echo 000
+import sys, urllib.request
+try:
+    print(urllib.request.urlopen(f"http://127.0.0.1:{sys.argv[1]}/health", timeout=3).status, end="")
+except Exception:
+    print("000", end="")
+EOF
+    fi
+}
+
+port_in_use() {
+    if command -v ss >/dev/null; then
+        ss -ltn "sport = :$PORT" 2>/dev/null | grep -q LISTEN
+    else
+        (exec 3<>"/dev/tcp/127.0.0.1/$PORT") 2>/dev/null
+    fi
+}
+
+cmd_install() {
+    echo "${B}PStock · cài đặt trên Linux${N}  ($APP_DIR)"
+    if ! command -v "$BASE_PY" >/dev/null; then
+        err "Không tìm thấy $BASE_PY. Cài:  sudo apt install python3 python3-venv python3-pip"
+        exit 1
+    fi
+    if ! "$BASE_PY" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)'; then
+        err "Cần Python 3.10+ (đang có $("$BASE_PY" -V 2>&1)). Linux Mint 21+ có sẵn 3.10; hoặc đặt PSTOCK_PYTHON=python3.12"
+        exit 1
+    fi
+    ok "Python: $("$BASE_PY" -V 2>&1)"
+    if [ ! -x "$PY" ]; then
+        echo "[1/4] Tạo môi trường ảo .venv ..."
+        if ! "$BASE_PY" -m venv "$VENV"; then
+            rm -rf "$VENV"
+            ver="$("$BASE_PY" -c 'import sys; print(f"{sys.version_info[0]}.{sys.version_info[1]}")')"
+            err "Không tạo được .venv. Trên Linux Mint cần gói venv:  sudo apt install python${ver}-venv  (hoặc python3-venv), rồi chạy lại ./accstock install"
+            exit 1
+        fi
+    else
+        echo "[1/4] .venv đã có, dùng lại."
+    fi
+    echo "[2/4] Cài thư viện theo requirements.txt (lần đầu mất vài phút) ..."
+    "$PY" -m pip install --upgrade pip -q || { err "pip upgrade lỗi"; exit 1; }
+    if ! "$PY" -m pip install -r requirements.txt; then
+        err "Cài thư viện lỗi (xem thông báo ở trên). Thường do thiếu mạng/proxy, hoặc thiếu gói build: sudo apt install build-essential python3-dev"
+        exit 1
+    fi
+    ok "Đã cài thư viện"
+    echo "[3/4] File cấu hình ..."
+    for f in .env telegram.env; do
+        if [ ! -f "$f" ] && [ -f "$f.example" ]; then
+            cp "$f.example" "$f" && chmod 600 "$f"
+            warn "Đã tạo $f từ $f.example: mở file và điền key (SSI / Telegram)."
+        fi
+    done
+    [ -f .env ] && chmod 600 .env telegram.env 2>/dev/null
+    mkdir -p "$LOG_DIR" "$RUN_DIR/cache"
+    echo "[4/4] Lệnh accstock ..."
+    chmod +x "$SELF"
+    mkdir -p "$BIN_DIR"
+    # An old link to this project's former launcher (./pstock, renamed to ./accstock) is replaced silently.
+    if [ -L "$BIN_DIR/accstock" ] && [ "$(readlink -f "$BIN_DIR/accstock" 2>/dev/null || true)" = "$APP_DIR/pstock" ]; then
+        rm "$BIN_DIR/accstock"
+    fi
+    if { [ -e "$BIN_DIR/accstock" ] || [ -L "$BIN_DIR/accstock" ]; } && [ "$(readlink -f "$BIN_DIR/accstock" 2>/dev/null || true)" != "$SELF" ]; then
+        err "$BIN_DIR/accstock đã tồn tại và không trỏ tới PStock; không ghi đè để tránh ảnh hưởng ứng dụng khác."
+        exit 1
+    fi
+    ln -sf "$SELF" "$BIN_DIR/accstock"
+    if [ -L "$BIN_DIR/acc" ] && [ "$(readlink -f "$BIN_DIR/acc" 2>/dev/null || true)" = "$SELF" ]; then
+        rm "$BIN_DIR/acc"
+        ok "Đã gỡ alias acc cũ của PStock."
+    fi
+    if [ -L "$BIN_DIR/pstock" ] && { [ "$(readlink -f "$BIN_DIR/pstock" 2>/dev/null || true)" = "$SELF" ] ||
+                                    [ "$(readlink -f "$BIN_DIR/pstock" 2>/dev/null || true)" = "$APP_DIR/pstock" ]; }; then
+        rm "$BIN_DIR/pstock"
+        ok "Đã gỡ alias pstock cũ của PStock."
+    fi
+    ok "Đã tạo $BIN_DIR/accstock -> $SELF"
+    case ":$PATH:" in
+        *":$BIN_DIR:"*) ;;
+        *) warn "$BIN_DIR chưa có trong PATH. Mở terminal mới (Linux Mint tự thêm ~/.local/bin khi thư mục này tồn tại), hoặc chạy:"
+           echo "      echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.bashrc && source ~/.bashrc" ;;
+    esac
+    echo
+    ok "Xong. Chạy:  accstock start"
+}
+
+need_venv() {
+    if [ ! -x "$PY" ]; then
+        err "Chưa cài. Chạy trước:  $APP_DIR/accstock install"
+        exit 1
+    fi
+}
+
+cmd_start() {
+    if [[ ! "$HOST" =~ ^[A-Za-z0-9._:-]+$ ]]; then
+        err "Địa chỉ nghe không hợp lệ: '$HOST' (APP_HOST trong .env hoặc PSTOCK_HOST trong pstock.conf). Dùng 127.0.0.1 hoặc 0.0.0.0"
+        exit 2
+    fi
+    if [ ! -x "$PY" ]; then
+        warn "Chưa có môi trường .venv - tự động cài đặt trước khi chạy."
+        cmd_install
+    fi
+    local pid
+    if pid="$(server_pid)"; then
+        local want="$PORT"
+        use_running_port
+        ok "PStock đang chạy rồi (PID $pid): $(url)"
+        [ "$want" != "$PORT" ] && warn "Muốn chuyển sang cổng $want:  accstock restart $want"
+        return 0
+    fi
+    if port_in_use; then
+        err "Cổng $PORT đang bị chương trình khác dùng. Chọn cổng khác, ví dụ:  accstock start 8888"
+        exit 1
+    fi
+    mkdir -p "$LOG_DIR"
+    [ -f .env ] || warn "Chưa có .env (copy từ .env.example và điền key) - app vẫn chạy với giá trị mặc định."
+    echo "=== $(date '+%F %T') accstock start ($HOST:$PORT) ===" >> "$LOG_FILE"
+    nohup "$PY" -m uvicorn app.main:app --host "$HOST" --port "$PORT" >> "$LOG_FILE" 2>&1 < /dev/null &
+    pid=$!
+    echo "$pid" > "$PID_FILE"
+    echo "$PORT" > "$PORT_FILE"
+    printf "Đang khởi động PStock (PID %s) " "$pid"
+    for _ in $(seq 1 40); do
+        if ! kill -0 "$pid" 2>/dev/null; then
+            echo
+            err "Server dừng ngay khi khởi động. 20 dòng log cuối ($LOG_FILE):"
+            tail -n 20 "$LOG_FILE" >&2
+            rm -f "$PID_FILE" "$PORT_FILE"
+            exit 1
+        fi
+        if [ "$(health)" = "200" ]; then
+            echo
+            ok "PStock đã chạy: ${B}$(url)${N}   (log: $LOG_FILE)"
+            return 0
+        fi
+        printf "."
+        sleep 0.5
+    done
+    echo
+    warn "Server đã chạy (PID $pid) nhưng /health chưa trả lời sau 20 giây. Xem: accstock logs"
+}
+
+cmd_stop() {
+    local pid
+    if ! pid="$(server_pid)"; then
+        rm -f "$PID_FILE" "$PORT_FILE"
+        if port_in_use; then
+            warn "PStock (do lệnh accstock chạy) không chạy, nhưng cổng $PORT đang có chương trình khác lắng nghe - không đụng tới."
+        else
+            ok "PStock không chạy."
+        fi
+        return 0
+    fi
+    printf "Đang dừng PStock (PID %s) " "$pid"
+    kill -TERM "$pid" 2>/dev/null
+    for _ in $(seq 1 20); do
+        kill -0 "$pid" 2>/dev/null || break
+        printf "."
+        sleep 0.5
+    done
+    if kill -0 "$pid" 2>/dev/null; then
+        echo
+        warn "Chưa dừng sau 10 giây, buộc dừng (SIGKILL)."
+        kill -KILL "$pid" 2>/dev/null
+        sleep 0.5
+    fi
+    rm -f "$PID_FILE" "$PORT_FILE"
+    echo
+    echo "=== $(date '+%F %T') accstock stop ===" >> "$LOG_FILE" 2>/dev/null
+    ok "Đã dừng PStock."
+}
+
+cmd_status() {
+    local pid code
+    echo "${B}PStock${N}  ($APP_DIR)"
+    if pid="$(server_pid)"; then
+        code="$(health)"
+        echo "  Trạng thái : ${G}đang chạy${N}"
+        echo "  PID        : $pid   (chạy được $(ps -o etime= -p "$pid" | tr -d ' '))"
+        echo "  Địa chỉ    : $(url)"
+        if [ "$HOST" = "127.0.0.1" ] || [ "$HOST" = "localhost" ]; then
+            echo "  Nghe trên  : $HOST (chỉ máy này; mở từ máy khác: đặt APP_HOST=0.0.0.0 trong .env rồi accstock restart)"
+        else
+            echo "  Nghe trên  : $HOST"
+        fi
+        if [ "$code" = "200" ]; then
+            echo "  /health    : ${G}OK${N}"
+        else
+            echo "  /health    : ${R}không trả lời ($code)${N}  - xem: accstock logs"
+        fi
+        echo "  Bộ nhớ     : $(ps -o rss= -p "$pid" | awk '{printf "%.0f MB", $1/1024}')"
+    else
+        echo "  Trạng thái : ${R}đã dừng${N}"
+        port_in_use && echo "  Ghi chú    : cổng $PORT đang bị chương trình khác dùng"
+    fi
+    echo "  Python     : $([ -x "$PY" ] && "$PY" -V 2>&1 || echo 'chưa cài (.venv) - chạy: ./accstock install')"
+    echo "  Log        : $LOG_FILE"
+    [ -n "$pid" ] || return 3     # LSB convention: 3 = not running
+}
+
+cmd_logs() {
+    [ -f "$LOG_FILE" ] || { warn "Chưa có log ($LOG_FILE)."; return 0; }
+    tail -n 50 -f "$LOG_FILE"
+}
+
+usage() {
+    awk 'NR == 1 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "$SELF"
+}
+
+case "${1:-}" in
+    install) cmd_install ;;
+    start) set_port "${2:-}"; cmd_start ;;
+    stop) use_running_port; cmd_stop ;;
+    restart) use_running_port; set_port "${2:-}"; cmd_stop; cmd_start ;;
+    status) use_running_port; cmd_status ;;
+    logs|log) use_running_port; cmd_logs ;;
+    auto) need_venv; shift; "$PY" scripts/auto_send.py "$@" ;;
+    help|-h|--help|"") usage ;;
+    *) err "Lệnh không hợp lệ: $1"; usage; exit 2 ;;
+esac

@@ -1,0 +1,1626 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ app_name }}</title>
+<script src="/static/js/lightweight-charts.standalone.production.js"></script>
+<style>
+  :root { --bg:#0f1419; --panel:#171d24; --line:#2a323c; --text:#e6e9ee; --muted:#8b95a1;
+          --up:#22a06b; --down:#e2483d; --accent:#4c8dff; --warn:#e5a50a; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.45 "Segoe UI", system-ui, sans-serif; }
+  header { display:flex; flex-wrap:wrap; gap:12px; align-items:center; padding:12px 20px; border-bottom:1px solid var(--line); }
+  header h1 { font-size:17px; margin:0 16px 0 0; font-weight:600; }
+  input, select, button, textarea { background:var(--panel); color:var(--text); border:1px solid var(--line);
+          border-radius:6px; padding:7px 10px; font:inherit; }
+  button { background:var(--accent); border-color:var(--accent); cursor:pointer; font-weight:600; }
+  button.secondary { background:var(--panel); border-color:var(--line); }
+  button:disabled { opacity:.5; cursor:wait; }
+  .tabs { display:flex; gap:4px; margin-left:auto; }
+  .tabs button { background:transparent; border-color:transparent; color:var(--muted); }
+  .tabs button.active { color:var(--text); border-color:var(--line); background:var(--panel); }
+  main { padding:16px 20px; }
+  /* global header on every tab: index cards + board colour legend */
+  .ghead { padding:12px 20px 0; border-bottom:1px solid var(--line); }
+  .ghead .idx-row { margin-bottom:8px; } .ghead .bd-legend { margin-bottom:8px; }
+  /* Scanner: sức mạnh cổ phiếu */
+  .st-bar { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:10px; }
+  .st-grid { display:grid; grid-template-columns:minmax(0,360px) minmax(0,1fr); gap:16px; align-items:start; }
+  @media (max-width: 1100px) { .st-grid { grid-template-columns:minmax(0,1fr); } }
+  .st-grid h4 { margin:0 0 6px; font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
+  .st-scroll { overflow:auto; max-height:640px; }
+  .st-scroll th { position:sticky; top:0; background:var(--panel); z-index:1; }
+  #stTable th[data-k] { cursor:pointer; user-select:none; } #stTable th[data-k]:hover { color:var(--text); }
+  #stTable th.sorted { color:var(--accent); }
+  #stSecTable tr.sel { background:#1e2a3a; }
+  .rsb { display:inline-block; min-width:30px; text-align:center; border-radius:4px; padding:1px 5px; font-weight:700;
+         background:#252d37; }
+  .rsb.rs-hi { background:#20a131; color:#fff; } .rsb.rs-mid { background:#3d7a47; color:#fff; } .rsb.rs-lo { background:#7a2a25; color:#fff; }
+  .st-help { font-size:12px; color:var(--muted); margin-bottom:10px; }
+  .st-help summary { cursor:pointer; color:var(--text); }
+  .st-help ol { margin:6px 0; padding-left:20px; } .st-help li { margin-bottom:3px; }
+  .stock-bar { display:flex; flex-wrap:wrap; gap:12px; align-items:center; margin-bottom:14px; }
+  .ichi-bar { gap:8px; margin-top:-6px; font-size:13px; }
+  .ichi-bar label { color:var(--muted); display:flex; align-items:center; gap:4px; }
+  .ichi-bar input { width:52px; background:var(--panel); color:var(--text); border:1px solid var(--line); border-radius:6px; padding:4px 6px; }
+  .ichi-bar input.changed { border-color:#e5a50a; color:#e5a50a; }
+  .bo-tools { margin-left:auto; display:flex; gap:8px; align-items:center; }
+  .bo-tools select { background:var(--panel); color:var(--text); border:1px solid var(--line); border-radius:6px; padding:6px 8px; }
+  .bo-tools label.off { color:var(--muted); text-decoration:line-through; }
+  #boBox { margin:-6px 0 14px; padding:10px 12px; border:1px solid var(--line); border-radius:8px; background:var(--panel); }
+  #boBox .bo-msg { white-space:pre-wrap; font-size:12.5px; line-height:1.5; margin-top:6px; max-height:320px; overflow:auto; }
+  .grid { display:grid; grid-template-columns: minmax(0,1fr) 340px; gap:16px; }
+  @media (max-width: 1000px) { .grid { grid-template-columns: 1fr; } }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:12px; }
+  .panel h3 { margin:0 0 8px; font-size:13px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); }
+  #priceChart { height:420px; } #macdChart, #rsiChart, #scoreChart { height:130px; margin-top:6px; }
+  .sublabel { font-size:11px; color:var(--muted); margin:8px 0 -2px; }
+  .score { font-size:34px; font-weight:700; }
+  .rating { display:inline-block; padding:2px 8px; border-radius:4px; font-weight:600; margin-left:8px; font-size:13px; }
+  .pos { color:var(--up); } .neg { color:var(--down); } .muted { color:var(--muted); }
+  .bg-pos { background:rgba(34,160,107,.18); color:var(--up); } .bg-neg { background:rgba(226,72,61,.18); color:var(--down); }
+  .bg-neu { background:rgba(139,149,161,.18); color:var(--muted); }
+  table { width:100%; border-collapse:collapse; }
+  td, th { padding:6px 8px; border-bottom:1px solid var(--line); text-align:left; white-space:nowrap; }
+  th { color:var(--muted); font-weight:500; font-size:12px; }
+  tr.click { cursor:pointer; } tr.click:hover { background:#1e252e; }
+  .kv td:first-child { color:var(--muted); padding-right:12px; white-space:nowrap; vertical-align:top; }
+  .kv td { border:none; padding:3px 0; white-space:normal; }
+  .notes { margin:8px 0 0; padding-left:18px; color:var(--muted); font-size:13px; }
+  #aiText { white-space:pre-wrap; margin-top:10px; }
+  .legend { font-size:12px; color:var(--muted); margin-top:6px; }
+  .legend span { margin-right:12px; } .legend i { display:inline-block; width:10px; height:3px; vertical-align:middle; margin-right:4px; }
+  .err { color:var(--down); margin-top:8px; }
+  .hidden { display:none; }
+  .tf { display:flex; gap:2px; }
+  .tf button { background:var(--panel); border-color:var(--line); color:var(--muted); padding:7px 9px; }
+  .tf button.active { background:var(--accent); border-color:var(--accent); color:var(--text); }
+  .live { font-size:12px; color:var(--muted); margin-left:8px; font-weight:400; text-transform:none; letter-spacing:0; }
+  .live.on::before { content:"● "; color:var(--up); }
+  /* ---- Bảng điện ---- */
+  .bd-bar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:12px; }
+  .pill { background:var(--panel); border-color:var(--line); color:var(--muted); border-radius:999px; padding:5px 12px; }
+  .pill.active { background:var(--accent); border-color:var(--accent); color:#fff; }
+  .idx-row { display:grid; grid-template-columns:repeat(auto-fit, minmax(215px, 1fr)); gap:10px; margin-bottom:14px; }
+  .idx { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:8px 12px; }
+  .idx .n { font-size:12px; font-weight:700; color:var(--muted); display:flex; justify-content:space-between; }
+  .idx .v { font-size:18px; font-weight:700; white-space:nowrap; }
+  .idx .b { font-size:11px; color:var(--muted); }
+  /* intraday mini chart of each index: green above / red below the reference (dashed), volume in light blue */
+  .idx-chart { position:relative; height:64px; margin:6px -6px -2px; }
+  .idx-arrow { position:absolute; left:50%; top:50%; transform:translate(-50%,-55%); font-size:40px; line-height:1;
+               pointer-events:none; z-index:2; opacity:.28; }
+  .idx-arrow.up { color:var(--up); } .idx-arrow.down { color:var(--down); }
+  .idx-hover { position:absolute; left:6px; top:0; font-size:10px; color:var(--text); z-index:3; pointer-events:none;
+               background:rgba(15,20,25,.7); border-radius:3px; padding:0 4px; }
+  .idx-hover:empty { display:none; }
+  .ic-tf { display:inline-flex; gap:2px; vertical-align:middle; }
+  .ic-tf button { padding:1px 7px; font-size:11px; background:var(--panel); border-color:var(--line); color:var(--muted); }
+  .ic-tf button.active { background:var(--accent); border-color:var(--accent); color:#fff; }
+  /* "Quan Tâm" and "VN30" are pinned as the first two columns; the other sectors flow in the remaining width */
+  .bd-wrap { display:flex; gap:10px; align-items:flex-start; }
+  .bd-wrap > .pin { flex:0 0 236px; width:236px; min-width:0; }
+  .bd-wrap > .board { flex:1; min-width:236px; }
+  .board { columns:236px; column-gap:10px; }
+  .sec.pinned { border-color:var(--accent); }
+  .wadd { display:flex; gap:4px; padding:0 4px 6px; }
+  .wadd input { flex:1; min-width:0; padding:3px 6px; font-size:12px; text-transform:uppercase; }
+  .wadd button { padding:3px 9px; }
+  .q { position:relative; }
+  .q .x { position:absolute; right:2px; top:3px; width:18px; height:18px; border-radius:50%; background:rgba(0,0,0,.65);
+          color:#fff; font:700 10px/18px sans-serif; text-align:center; font-style:normal; display:none; }
+  .q:hover .x { display:block; } .q .x:hover { background:var(--down); }
+  .wsort { cursor:pointer; user-select:none; } .wsort:hover { color:var(--text); }
+  .wsort.on { color:var(--accent); font-weight:700; }
+  .w-empty { font-size:11px; color:var(--muted); padding:6px; }
+  .sec { break-inside:avoid; background:var(--panel); border:1px solid var(--line); border-radius:8px;
+         margin:0 0 10px; padding:6px 4px 4px; }
+  .sec-h { display:flex; justify-content:space-between; align-items:baseline; gap:6px; padding:0 6px 2px; }
+  .sec-h b { font-size:11px; text-transform:uppercase; letter-spacing:.03em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .sec-h span { font-size:13px; font-weight:700; }
+  .sec-s { font-size:10px; color:var(--muted); padding:0 6px 4px; }
+  .q { display:grid; grid-template-columns:38px 30px 1fr 56px 46px; gap:2px; align-items:center; height:24px;
+       padding:0 6px; margin-bottom:2px; border-radius:3px; font-size:11.5px; font-weight:600; cursor:pointer;
+       color:#21242b; font-variant-numeric:tabular-nums; transition:transform .12s; }
+  .q:hover { transform:scale(1.02); box-shadow:0 2px 8px rgba(0,0,0,.4); }
+  .q > :nth-child(n+3) { text-align:right; } .q > :nth-child(2) { text-align:center; }
+  .q.hd { background:none; color:var(--muted); font-size:10px; height:18px; cursor:default; border-bottom:1px solid var(--line);
+          border-radius:0; } .q.hd:hover { transform:none; box-shadow:none; }
+  .q b { font-weight:800; }
+  .s-ceil { background:#8970fd; } .s-floor { background:#4fc3f7; } .s-ref { background:#ffe4a5; }
+  .s-up1 { background:#aee9b8; } .s-up2 { background:#8bd293; } .s-up3 { background:#61c46e; } .s-up4 { background:#20a131; color:#fff; }
+  .s-dn1 { background:#f9c9c4; } .s-dn2 { background:#f4a39c; } .s-dn3 { background:#ee7b72; } .s-dn4 { background:#d93a30; color:#fff; }
+  .s-none { background:transparent; color:var(--muted); }
+  .q.flash { animation:flash .9s; }
+  @keyframes flash { 0% { box-shadow:inset 0 0 0 2px #fff; } 100% { box-shadow:inset 0 0 0 2px transparent; } }
+  .bd-legend { font-size:11px; color:var(--muted); display:flex; flex-wrap:wrap; gap:4px 10px; align-items:center; margin-bottom:10px; }
+  .bd-legend i { display:inline-block; width:14px; height:10px; border-radius:2px; vertical-align:middle; margin-right:3px; }
+  .xl { position:relative; }
+  .xl summary { list-style:none; cursor:pointer; background:#1d6f42; border:1px solid #1d6f42; color:#fff; font-weight:600;
+                border-radius:6px; padding:6px 12px; user-select:none; }
+  .xl summary::-webkit-details-marker { display:none; }
+  .xl .menu { position:absolute; z-index:20; top:calc(100% + 4px); left:0; min-width:250px; background:var(--panel);
+              border:1px solid var(--line); border-radius:8px; padding:6px; box-shadow:0 8px 24px rgba(0,0,0,.5); }
+  .xl .menu button { display:block; width:100%; text-align:left; background:transparent; border-color:transparent;
+                     color:var(--text); font-weight:500; padding:7px 10px; }
+  .xl .menu button:hover { background:#1e252e; }
+  .xl .menu .hint { font-size:11px; color:var(--muted); padding:4px 10px 2px; border-top:1px solid var(--line); margin-top:4px; }
+  .tg { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-left:auto; background:var(--panel);
+        border:1px solid var(--line); border-radius:8px; padding:4px 12px; }
+  .tg input[type=number] { width:64px; padding:3px 6px; }
+  .tg input[type=time] { width:105px; padding:3px 6px; }
+  .tg label { display:flex; gap:4px; align-items:center; white-space:nowrap; }
+  .tg #lblAutoBoard { font-weight:600; }
+  .tg button { padding:4px 10px; }
+  .sum-line { display:flex; gap:14px; align-items:baseline; flex-wrap:wrap; font-variant-numeric:tabular-nums; }
+  .tg .auto { display:flex; gap:10px; align-items:center; border-left:1px solid var(--line); padding-left:10px;
+              font-size:12px; }
+  .tg .auto label { display:flex; gap:4px; align-items:center; cursor:pointer; white-space:nowrap; }
+  .tg .auto label.off { color:var(--muted); text-decoration:line-through; }
+  #tgBox { background:var(--bg); border:1px solid var(--line); border-radius:6px; margin:0 0 12px; }
+  .tg-head { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:6px 10px;
+             border-bottom:1px solid var(--line); }
+  .tg-head button { padding:4px 12px; }
+  #tgPreview { white-space:pre-wrap; font-size:12px; padding:8px 10px; max-height:420px; overflow:auto; }
+  #tgPreview:empty { display:none; }
+  #tgPreview pre { margin:2px 0 6px; font:12px/1.35 Consolas, "Courier New", monospace; }
+  /* ---- Xếp hạng ACC (Stock Strength Monitor V1) ---- */
+  .acc-ov { display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:10px; margin-bottom:12px; }
+  .acc-card { background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:8px 12px; min-width:0; }
+  .acc-card .n { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.03em; }
+  .acc-card .v { font-size:20px; font-weight:700; font-variant-numeric:tabular-nums; }
+  .acc-card .b { font-size:11px; color:var(--muted); }
+  .acc-card.wide { grid-column:span 2; }
+  @media (max-width: 600px) { .acc-card.wide { grid-column:auto; } }
+  .acc-dist { display:flex; align-items:flex-end; gap:2px; height:38px; margin-top:4px; }
+  .acc-dist i { flex:1; background:var(--accent); border-radius:2px 2px 0 0; min-height:1px; opacity:.85; }
+  .acc-dist-l { display:flex; justify-content:space-between; font-size:9px; color:var(--muted); }
+  .acc-bar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:10px; }
+  .acc-bar select, .acc-bar input { padding:5px 8px; }
+  .acc-bar label { font-size:12px; color:var(--muted); display:flex; gap:4px; align-items:center; }
+  .acc-grid { display:grid; grid-template-columns:minmax(0,1fr) 360px; gap:16px; align-items:start; }
+  @media (max-width: 1200px) { .acc-grid { grid-template-columns:minmax(0,1fr); } }
+  /* Phân tích: Wyckoff + Ichimoku */
+  .wy-bar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:10px; }
+  .wy-bar select, .wy-bar input { padding:5px 8px; }
+  .wy-bar label { font-size:12px; color:var(--muted); display:flex; gap:4px; align-items:center; }
+  .wy-grid { display:grid; grid-template-columns:minmax(0,1fr) 400px; gap:16px; align-items:start; }
+  @media (max-width: 1200px) { .wy-grid { grid-template-columns:minmax(0,1fr); } }
+  .wy-grid > div > .panel + .panel, .wy-below > .panel { margin-top:16px; }
+  .wy-below { display:grid; grid-template-columns:repeat(auto-fit, minmax(360px, 1fr)); gap:16px; margin-top:16px; }
+  .wy-below > .panel { margin-top:0; }
+  #wyChart { height:520px; }
+  .wy-tag { display:inline-block; padding:1px 7px; border-radius:4px; font-size:12px; font-weight:600; background:rgba(139,149,161,.18); color:var(--muted); }
+  .wy-tag.up { background:rgba(34,160,107,.18); color:var(--up); } .wy-tag.dn { background:rgba(226,72,61,.18); color:var(--down); }
+  .wy-tag.warn { background:rgba(229,165,10,.18); color:var(--warn); }
+  .wy-sc { border-left:3px solid var(--line); padding:4px 0 4px 10px; margin-bottom:10px; font-size:13px; }
+  .wy-sc.A { border-color:var(--warn); } .wy-sc.B { border-color:#e5c07b; background:rgba(229,192,123,.08); } .wy-sc.C { border-color:var(--accent); } .wy-sc.D { border-color:var(--up); }
+  .wy-sc .act { color:var(--muted); }
+  .wy-ladder td { padding:3px 8px; font-variant-numeric:tabular-nums; }
+  .wy-ladder tr.tg td { color:var(--warn); font-weight:600; } .wy-ladder tr.px td { background:rgba(76,141,255,.16); font-weight:600; }
+  .wy-ladder tr.tr td { color:var(--accent); } .wy-ladder tr.W td:nth-child(2) { color:#e5c07b; }
+  .wy-warn { color:var(--warn); font-size:13px; margin:4px 0; }
+  #wyPnf { font:12px/1.25 Consolas, monospace; margin:6px 0 0; max-height:360px; overflow:auto; color:var(--muted); }
+  #accTable td, #accTable th { padding:5px 6px; font-variant-numeric:tabular-nums; }
+  #accTable th[data-k] { cursor:pointer; user-select:none; } #accTable th[data-k]:hover { color:var(--text); }
+  #accTable th.sorted { color:var(--accent); }
+  #accTable tr.sel { background:#1e2a3a; }
+  .hm { display:inline-block; min-width:34px; text-align:center; border-radius:4px; padding:1px 4px; font-weight:600; }
+  .hm.h5 { background:#1f8a3b; color:#fff; } .hm.h4 { background:#2f6d3e; color:#fff; } .hm.h3 { background:#2b333d; }
+  .hm.h2 { background:#6b4a1f; color:#fff; } .hm.h1 { background:#7a2a25; color:#fff; }
+  .sig { display:inline-block; border-radius:4px; padding:1px 6px; font-size:10.5px; font-weight:700; letter-spacing:.02em; white-space:nowrap; }
+  .sig-OVERHEATED { background:#c2410c; color:#fff; } .sig-BREAKOUT { background:#8970fd; color:#fff; }
+  .sig-STRONG-BUY-WATCH { background:#16a34a; color:#fff; } .sig-STRONG { background:rgba(34,160,107,.25); color:#4ade80; }
+  .sig-ACCUMULATION { background:rgba(76,141,255,.22); color:#7fb0ff; } .sig-WEAK { background:rgba(226,72,61,.2); color:#f87171; }
+  .sig-NEUTRAL { background:rgba(139,149,161,.18); color:var(--muted); }
+  .dl { font-size:11px; } .dl.up { color:var(--up); } .dl.dn { color:var(--down); }
+  .acc-det .big { font-size:30px; font-weight:700; }
+  .acc-det h5 { margin:10px 0 2px; font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.03em;
+                display:flex; justify-content:space-between; }
+  .acc-det ul { list-style:none; margin:0; padding:0; font-size:12px; }
+  .acc-det li { display:flex; justify-content:space-between; gap:8px; padding:1px 0; }
+  .acc-det li.no { color:var(--muted); } .acc-det li.no b { font-weight:400; }
+  .meter { height:6px; background:#252d37; border-radius:3px; overflow:hidden; margin:2px 0 4px; }
+  .meter i { display:block; height:100%; background:var(--accent); }
+  @media (max-width: 600px) { main { padding:12px 16px; } .ghead { padding:10px 16px 0; } .board { columns:1; }
+    .bd-wrap { flex-wrap:wrap; } .bd-wrap > .pin, .bd-wrap > .board { flex:1 1 100%; width:auto; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>{{ app_name }}</h1>
+  <datalist id="wl">{% for s in watchlist %}<option value="{{ s }}">{% endfor %}</datalist>
+  {% if needs_key %}<input id="apiKey" type="password" placeholder="X-API-Key" size="14">{% endif %}
+  <div class="tabs"><button data-tab="stock">Cổ phiếu</button><button class="active" data-tab="board">Bảng điện</button><button data-tab="scan">Scanner</button><button data-tab="acc">Xếp hạng ACC</button><button data-tab="analysis">Phân tích</button></div>
+</header>
+<div class="ghead">
+    <div class="idx-row" id="bdIdx"><div class="muted">Đang tải chỉ số…</div></div>
+    <div class="bd-legend">
+      <span><i class="s-ceil"></i>Trần</span><span><i class="s-up4"></i>≥ 4%</span><span><i class="s-up3"></i>≥ 2%</span>
+      <span><i class="s-up2"></i>≥ 1%</span><span><i class="s-up1"></i>Tăng</span><span><i class="s-ref"></i>Tham chiếu</span>
+      <span><i class="s-dn1"></i>Giảm</span><span><i class="s-dn2"></i>≤ −1%</span><span><i class="s-dn3"></i>≤ −2%</span>
+      <span><i class="s-dn4"></i>≤ −4%</span><span><i class="s-floor"></i>Sàn</span>
+      <span>· Giá: nghìn đồng · Điểm = điểm kỹ thuật khung Ngày · bấm vào mã để xem biểu đồ</span>
+      <span>· Đồ thị chỉ số <span class="ic-tf" id="icTf"><button data-iv="1">1 phút</button><button data-iv="3">3 phút</button></span>
+        <span id="icInfo"></span></span>
+    </div>
+</div>
+
+<main>
+  <section id="tab-stock" class="hidden">
+    <div class="stock-bar">
+      <input id="symbol" value="FPT" size="8" style="text-transform:uppercase" list="wl">
+      <div class="tf" id="tfBar">
+        <button data-tf="5m">5m</button><button data-tf="15m">15m</button><button data-tf="30m">30m</button>
+        <button data-tf="1h" class="active">60m</button><button data-tf="1D">Ngày</button><button data-tf="1W">Tuần</button>
+      </div>
+      <button id="btnLoad">Phân tích</button>
+      <label class="muted"><input type="checkbox" id="refresh"> Tải lại dữ liệu</label>
+      <div class="bo-tools" title="Ichimoku BO (phá mây) của toàn bộ mã trong các bảng của Bảng điện, gửi Telegram">
+        <button id="btnBo">Gửi BO 60m</button>
+        <select id="boTf"><option value="30m">30m</option><option value="1h" selected>60m</option></select>
+        <label id="lblAutoBo" class="off"><input type="checkbox" id="autoBo"> Tự động gửi BO</label>
+      </div>
+    </div>
+    <div class="stock-bar ichi-bar" title="Tham số Ichimoku Trịnh Phát của biểu đồ và phần Tổng hợp (lưu trong trình duyệt). Senkou A = số phiên đẩy mây tới trước, Chikou = số phiên vẽ lùi giá đóng cửa. Bảng điện, Telegram, quét vẫn dùng thiết lập mặc định.">
+      <b>Ichimoku TP:</b>
+      <label>Tenkan <input type="number" min="1" max="300" id="ichiTenkan"></label>
+      <label>Kijun <input type="number" min="1" max="300" id="ichiKijun"></label>
+      <label>Senkou A <input type="number" min="1" max="300" id="ichiSenkouA"></label>
+      <label>Senkou B <input type="number" min="1" max="300" id="ichiSenkouB"></label>
+      <label>Chikou <input type="number" min="1" max="300" id="ichiChikou"></label>
+      <button class="secondary" id="btnIchiApply">Áp dụng</button>
+      <button class="secondary" id="btnIchiReset">IchiTP Mặc Định</button>
+    </div>
+    <div id="boBox" class="hidden"><span id="boStatus" class="muted"></span>
+      <button id="btnBoClose" style="float:right;padding:2px 8px">✕</button><div class="bo-msg" id="boPreview"></div></div>
+    <div class="grid">
+      <div class="panel">
+        <h3><span id="chartTitle">Biểu đồ</span><span id="liveBadge" class="live"></span></h3>
+        <div id="priceChart"></div>
+        <div class="legend">
+          <span>Giá: nghìn đồng</span>
+          <span><i style="background:#4c8dff"></i><span id="lgT" style="margin:0">Tenkan</span></span><span><i style="background:#e5a50a"></i><span id="lgK" style="margin:0">Kijun</span></span>
+          <span><i style="background:#22a06b"></i><span id="lgA" style="margin:0">Senkou A</span></span><span><i style="background:#e2483d"></i><span id="lgB" style="margin:0">Senkou B</span></span>
+          <span><i style="background:rgba(34,160,107,.35)"></i>Mây tăng</span><span><i style="background:rgba(226,72,61,.35)"></i>Mây giảm</span>
+          <span><i style="background:#b58cff;height:3px"></i><span id="lgC" style="margin:0">Chikou</span></span>
+          <span><i style="background:#00bcd4"></i>Kijun 65</span><span><i style="background:#ff7f50;height:4px"></i>Kijun 129 (Dao Găm)</span>
+          <span>▲ Breakout ▼ Breakdown</span>
+        </div>
+        <div id="macdChart"></div>
+        <div id="rsiChart"></div>
+        <div class="sublabel">Điểm kỹ thuật (−100…+100) · <span class="pos">≥ 60 Strong Bullish</span> · <span class="pos">≥ 25 Bullish</span> · Neutral · <span class="neg">≤ −25 Bearish</span> · <span class="neg">≤ −60 Strong Bearish</span></div>
+        <div id="scoreChart"></div>
+      </div>
+      <div>
+        <div class="panel">
+          <h3 title="Giá: nghìn đồng · KLGD: cổ phiếu, của nến mới nhất trong khung đang chọn">Tổng hợp:</h3>
+          <div id="summary" class="muted">Nhập mã và bấm Phân tích.</div>
+        </div>
+        <div class="panel" style="margin-top:16px">
+          <h3>Claude AI nhận định</h3>
+          <textarea id="aiQuestion" rows="2" style="width:100%" placeholder="Câu hỏi thêm (không bắt buộc)"></textarea>
+          <button id="btnAI" style="margin-top:8px">Hỏi Claude</button>
+          <div id="aiText" class="muted"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="tab-board">
+    <div class="bd-bar">
+      <button class="pill active" data-f="all">Tất cả</button><button class="pill" data-f="watch">Quan tâm</button>
+      <details class="xl" id="xlMenu"><summary title="Nhập / xuất danh sách mã của các ngành">📊 Excel ▾</summary>
+        <div class="menu">
+          <button id="btnXlExport">⬇️ Xuất Excel (Ngành · Mã)</button>
+          <button id="btnXlImport">⬆️ Nhập Excel / CSV…</button>
+          <button id="btnXlReset">↺ Khôi phục danh sách mặc định</button>
+          <div class="hint" id="xlInfo">Mẫu: cột A = Ngành, cột B = Mã, mỗi dòng một mã. Nhập sẽ xoá toàn bộ các bảng ngành hiện có rồi mới nạp file. Ngành “Quan Tâm” → bảng Quan Tâm, ngành “VN30” → bảng VN30 (không có thì dùng rổ VN30 thực tế).</div>
+        </div>
+      </details>
+      <input type="file" id="xlFile" accept=".xlsx,.xlsm,.csv,.txt" class="hidden">
+      <label class="muted"><input type="checkbox" id="bdSort"> Xếp ngành theo % thay đổi</label>
+      <span class="muted" id="bdStatus" style="font-size:12px"></span>
+      <div class="tg">   <!-- all settings in a single horizontal row -->
+        <label id="lblAutoBoard" title="Bật/tắt gửi bản tin mạnh/yếu tự động theo interval"><input type="checkbox" id="tgAutoBoard" checked> 📨 Tự động gửi</label>
+        <label class="muted">Từ <input id="tgStart" type="time" value="09:18"> Đến <input id="tgEnd" type="time" value="15:10"></label>
+        <label class="muted">Interval <input id="tgInterval" type="number" value="30" min="1" max="720" step="1"> phút</label>
+        <label class="muted">Ngưỡng ±<input id="tgThr" type="number" value="3" min="0.1" max="15" step="0.1"> %</label>
+        <span id="tgCount" class="muted" style="font-size:12px"></span>
+        <span id="tgSettingStatus" class="muted" style="font-size:12px"></span>
+        <button class="secondary" id="btnTgPreview">Xem trước</button>
+        <button id="btnTgSend">Gửi ngay</button>
+        <button class="secondary" id="btnTgDaily" title="Gửi bản tin Ichimoku BO/BD của ngày hôm nay, nếu chưa tới 15:05 thì gửi của ngày trước">Gửi BO/BD</button>
+        <span class="auto" title="Bật/tắt gửi cảnh báo BO/BD cuối ngày.">
+          <label id="lblAutoDaily"><input type="checkbox" id="tgAutoDaily" checked> BO/BD 15:05</label>
+        </span>
+      </div>
+    </div>
+    <div id="tgBox" class="hidden">
+      <div class="tg-head"><span id="tgStatus" class="muted" style="font-size:12px"></span>
+        <button class="secondary" id="btnTgClose" title="Thu gọn để các bảng quay lại vị trí ban đầu">▲ Thu gọn</button></div>
+      <div id="tgPreview"></div>
+    </div>
+    <div class="bd-wrap">
+      <div class="pin" id="bdPinW">
+        <div class="sec pinned">
+          <div id="wHead"><div class="sec-h"><b>Quan Tâm</b><span></span></div></div>
+          <form class="wadd" id="wAdd" title="Thêm một hoặc nhiều mã (cách nhau bằng dấu phẩy). Danh sách lưu trên trình duyệt này.">
+            <input id="wInput" list="wl" placeholder="Thêm mã: FPT, HPG…" autocomplete="off"><button type="submit">+</button>
+          </form>
+          <div id="wRows"></div>
+        </div>
+      </div>
+      <div class="pin" id="bdPinV"></div>
+      <div class="board" id="bdBoard"><div class="muted">Đang tải bảng điện…</div></div>
+    </div>
+  </section>
+
+  <section id="tab-scan" class="hidden">
+    <div class="panel" style="margin-bottom:16px">
+      <h3>Sức mạnh cổ phiếu · RS Rating <span class="live">· mọi mã trên Bảng điện (VN30, các ngành, Quan Tâm) · khung Ngày</span></h3>
+      <div class="st-bar">
+        <input id="stSearch" placeholder="Tìm mã…" size="9" style="text-transform:uppercase">
+        <select id="stSector"><option value="">Tất cả ngành</option></select>
+        <label class="muted"><input type="checkbox" id="stTT"> Chỉ mã đạt Trend Template</label>
+        <label class="muted"><input type="checkbox" id="stTop3"> Chỉ 3 ngành mạnh nhất</label>
+        <label class="muted">RS Rating ≥ <input id="stMinRS" type="number" value="0" min="0" max="99" style="width:64px"></label>
+        <button class="secondary" id="btnStRefresh" title="Tính lại với dữ liệu mới nhất (khoảng 1–2 phút)">↻ Tính lại</button>
+        <span id="stStatus" class="muted" style="font-size:12px">Đang tải…</span>
+      </div>
+      <details class="st-help"><summary>Cách tính</summary>
+        <ol>
+          <li><b>RS / VNI</b> = (1 + %thay đổi giá CP) / (1 + %thay đổi VN-Index) trong 3 tháng (63 phiên); &gt; 1 là mạnh hơn thị trường.
+            <b>Đường RS</b> = giá CP / VN-Index: <span class="pos">▲</span> ở đỉnh 52 tuần, <b class="pos">★</b> lập đỉnh mới <i>trước</i> giá (tín hiệu rất mạnh).</li>
+          <li><b>RS Rating</b> (kiểu IBD/O'Neil, 1–99): 0.4×ROC(63) + 0.2×ROC(126) + 0.2×ROC(189) + 0.2×ROC(252), rồi xếp hạng percentile trong
+            toàn bộ các mã trên bảng điện. ≥ 80 = nhóm dẫn dắt. Mã chưa đủ 1 năm dữ liệu thì chia lại trọng số theo các ROC có được.</li>
+          <li><b>Điểm KT</b> (0–100) = tổng điểm các điều kiện đạt, chia theo nhóm <b>Xu hướng · Động lượng · Dòng tiền</b> (rê chuột vào ô để xem từng điều kiện):
+            <span id="stTechLegend"></span></li>
+          <li><b>Trend Template</b> (Minervini, đạt/không đạt): <span id="stTplLegend"></span>.</li>
+          <li><b>Ngành</b>: RS Rating trung bình của các mã trong ngành (bảng bên trái). Cổ phiếu mạnh trong ngành mạnh có xác suất thành công cao hơn.</li>
+        </ol>
+        <b>Tổng hợp</b> = 40% RS Rating + 40% Điểm KT + 20% sức mạnh ngành; xếp hạng lại mỗi ngày. Dùng Trend Template làm bộ lọc đầu vào.
+        <br><i>Điểm sức mạnh chỉ hỗ trợ sàng lọc, không thay thế cho quyết định đầu tư.</i>
+      </details>
+      <div class="st-grid">
+        <div><h4>Ngành mạnh · bấm để lọc</h4><div class="st-scroll"><table id="stSecTable"></table></div></div>
+        <div><h4 id="stCount">Cổ phiếu</h4><div class="st-scroll"><table id="stTable"></table></div></div>
+      </div>
+    </div>
+    <div class="panel">
+      <h3>Scanner danh mục (theo khung thời gian)</h3>
+      <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px">
+        <input id="scanSymbols" style="flex:1; min-width:260px" value="{{ watchlist|join(',') }}">
+        <input id="minScore" type="number" value="-100" style="width:90px" title="Điểm tối thiểu">
+        <button id="btnScan">Quét</button>
+      </div>
+      <div class="muted" id="scanStatus">Quét theo khung thời gian đang chọn ở tab Cổ phiếu. Dữ liệu được lưu cache sau lần đầu.</div>
+      <div style="overflow-x:auto"><table id="scanTable"></table></div>
+    </div>
+  </section>
+
+  <section id="tab-acc" class="hidden">
+    <div class="panel">
+      <h3>ACC Stock Strength Monitor · Xếp hạng cổ phiếu <span class="live">· benchmark VN30 · mọi mã trên Bảng điện · khung Ngày · phiên đã đóng cửa</span></h3>
+      <div class="acc-ov" id="accOv"><div class="muted">Đang tải…</div></div>
+      <div class="acc-bar">
+        <span id="accModes"><button class="pill active" data-m="combined">Combined</button><button class="pill" data-m="swing">Swing</button><button class="pill" data-m="position">Position</button><button class="pill" data-m="setup">Setup</button></span>
+        <input id="accSearch" placeholder="Tìm mã…" size="8" style="text-transform:uppercase">
+        <select id="accSector"><option value="">Tất cả ngành</option></select>
+        <label>Strength ≥ <select id="accMinS"><option value="0">Tất cả</option><option>60</option><option>70</option><option>80</option><option>90</option></select></label>
+        <label>RS ≥ <select id="accMinRS"><option value="0">Tất cả</option><option>50</option><option>60</option><option>70</option></select></label>
+        <label>Setup <select id="accSetup"><option value="">Tất cả</option><option>Accumulation</option><option>Breakout</option></select></label>
+        <label>Risk <select id="accRisk"><option value="">Tất cả</option><option>Low</option><option>Medium</option><option>High</option></select></label>
+        <label>Trend <select id="accTrend"><option value="">Tất cả</option><option>Bullish</option><option>Neutral</option><option>Bearish</option></select></label>
+        <label>Tín hiệu <select id="accSig"><option value="">Tất cả</option></select></label>
+        <label>Top <select id="accTop"><option>10</option><option selected>20</option><option>50</option><option value="0">Tất cả</option></select></label>
+        <button class="secondary" id="btnAccCsv" title="Xuất các dòng đang hiển thị ra CSV (Python / Excel)">⬇️ CSV</button>
+        <button class="secondary" id="btnAccRefresh" title="Tính lại với dữ liệu mới nhất (khoảng 1–2 phút)">↻ Tính lại</button>
+        <span id="accStatus" class="muted" style="font-size:12px">Đang tải…</span>
+      </div>
+      <details class="st-help"><summary>Cách tính</summary>
+        <ol>
+          <li><b>RS</b> (30%): Excess Return = %tăng CP − %tăng VN30 trong 1M/3M/6M/12M (21/63/126/252 phiên), xếp hạng percentile 0–100 trong
+            toàn bộ universe cùng ngày. RS Swing = 0.40·P1M + 0.35·P3M + 0.25·P6M · RS Position = 0.15·P3M + 0.35·P6M + 0.50·P12M · RS = trung bình hai giá trị.
+            Mã chưa đủ lịch sử thì chia lại trọng số theo các giai đoạn có được.</li>
+          <li><b>Trend</b> (25%): <span id="accLgTrend"></span>.</li>
+          <li><b>Momentum</b> (20%): <span id="accLgMom"></span>.</li>
+          <li><b>Flow</b> (15%): <span id="accLgFlow"></span>.</li>
+          <li><b>Ichimoku</b> (10%, <span id="accLgIchiP"></span>): <span id="accLgIchi"></span>.</li>
+          <li><b>Swing</b> = 0.30·RS Swing + 0.70·Other · <b>Position</b> = 0.30·RS Position + 0.70·Other ·
+            Other = (0.25·Trend + 0.20·Mom + 0.15·Flow + 0.10·Ichi) / 0.70 · <b>Combined</b> = (Swing + Position) / 2.</li>
+          <li><b>Setup</b> (chất lượng điểm mua, độc lập với Combined): <span id="accLgSetup"></span>.</li>
+          <li><b>Risk</b> (càng cao càng cần thận trọng, không trừ vào Combined): <span id="accLgRisk"></span>.</li>
+          <li><b>Tín hiệu</b> theo thứ tự ưu tiên: OVERHEATED (Risk ≥ 60) → BREAKOUT (breakout xác nhận, Setup ≥ 75) → STRONG BUY WATCH (Combined ≥ 80, Setup ≥ 75, Risk ≤ 40)
+            → STRONG (≥ 80) → ACCUMULATION (≥ 70, Setup ≥ 60, chưa breakout) → WEAK (&lt; 40) → NEUTRAL.</li>
+          <li><b>Δ</b> = Combined phiên này − phiên trước (▲▼ = số bậc thay đổi thứ hạng). Trong giờ giao dịch nến đang chạy không được tính: điểm dùng phiên đã đóng cửa gần nhất (sau 15:00 bấm “Tính lại”).</li>
+        </ol>
+        <i>Đây là nhãn theo thuật toán, không phải khuyến nghị mua bán tự động. Các ngưỡng 80/90 cần được kiểm chứng (backtest) trước khi dùng để ra quyết định.</i>
+      </details>
+      <div class="acc-grid">
+        <div><h4 id="accCount" class="muted" style="margin:0 0 6px;font-size:12px;text-transform:uppercase">Cổ phiếu</h4>
+          <div class="st-scroll" style="max-height:720px"><table id="accTable"></table></div>
+          <div class="muted" style="font-size:11px;margin-top:6px">Bấm vào dòng để xem chi tiết điểm · bấm đúp để mở biểu đồ · bấm tiêu đề cột để sắp xếp.</div></div>
+        <div class="panel acc-det" id="accDet"><div class="muted">Bấm vào một mã để xem chi tiết điểm.</div></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="tab-analysis" class="hidden">
+    <div class="panel">
+      <h3>Phân tích Wyckoff × Ichimoku <span class="live">· mục tiêu đếm ngang P&amp;F (giá đi được bao xa) + bản đồ Kijun / Kumo Ngày &amp; Tuần (chướng ngại trên đường đi) → vùng hợp lưu</span></h3>
+      <div class="wy-bar">
+        <input id="wySym" value="FPT" size="8" style="text-transform:uppercase" list="wl">
+        <span id="wyTf"><button class="pill active" data-tf="1D">Ngày</button><button class="pill" data-tf="1W">Tuần</button></span>
+        <button id="btnWy">Phân tích</button>
+        <label title="Để trống = tự dò vùng đi ngang gần nhất">TR từ <input type="date" id="wyStart"></label>
+        <label>đến <input type="date" id="wyEnd"></label>
+        <label title="Kích thước 1 box P&amp;F (đồng). Để trống = tự động (~1% giá)">Box <input id="wyBox" type="number" min="1" step="10" placeholder="tự động" style="width:90px"></label>
+        <label>Đảo chiều <select id="wyRev"><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option></select> box</label>
+        <label>Hợp lưu ± <select id="wyTol"><option>1</option><option>2</option><option selected>3</option><option>5</option></select> %</label>
+        <label>Hướng <select id="wyDir"><option value="auto">Tự động</option><option value="up">Lên (tích lũy)</option><option value="down">Xuống (phân phối)</option></select></label>
+        <button class="secondary" id="btnWyAuto" title="Xóa TR / box chọn tay, dò lại tự động">↺ Tự động</button>
+        <button class="secondary" id="btnWyChart" title="Mở biểu đồ kỹ thuật chi tiết của mã này">📈 Biểu đồ</button>
+        <button class="secondary" id="btnEod" title="Nhập dữ liệu End Of Day (khung Ngày) từ file CSV CafeF: &lt;Ticker&gt;,&lt;DTYYYYMMDD&gt;,&lt;Open&gt;,&lt;High&gt;,&lt;Low&gt;,&lt;Close&gt;,&lt;Volume&gt; (giá nghìn đồng, nên dùng giá đã điều chỉnh) hoặc file .zip chứa các file đó. Chọn được nhiều file. Bỏ qua mã chứng quyền / ETF (8 ký tự) và chỉ số. Dữ liệu được ghép vào cache Ngày; các phiên mới sau đó vẫn tự cập nhật từ Vietcap / SSI.">⬆️ Import EOD</button>
+        <input type="file" id="eodFile" accept=".csv,.txt,.zip" multiple class="hidden">
+        <span id="wyStatus" class="muted" style="font-size:12px"></span>
+      </div>
+      <details class="st-help"><summary>Cách tính</summary>
+        <ol>
+          <li><b>Vùng TR</b>: đoạn đi ngang (biên độ ≤ 30% khung Ngày / 40% khung Tuần, ≥ 20 / 10 nến, giá cắt đường giữa ≥ 2 lần) kết thúc ngay trước nến đóng cửa vượt đỉnh (SOS) hoặc thủng đáy (SOW) gần nhất
+            và giá không quay về giữa TR trong 15 nến sau đó; nếu chưa phá vỡ thì là TR đang diễn ra. Có thể chọn tay ngày bắt đầu / kết thúc.</li>
+          <li><b>Đếm ngang</b>: dựng biểu đồ Point &amp; Figure (high/low, đảo chiều 3 box) trên đoạn TR, <b>Count = số cột × box × 3</b>.</li>
+          <li><b>Mục tiêu</b> hướng lên: T1 (thận trọng) = đáy TR + Count · T2 (trung bình) = giữa TR + Count · T3 (toàn bộ nguyên nhân) = đỉnh TR + Count. Hướng xuống: đỉnh / giữa / đáy TR − Count.</li>
+          <li><b>Bản đồ Ichimoku</b> (Ngày + Tuần, thiết lập Trịnh Phát của ứng dụng): Kijun, Kijun 65/129, biên trên / dưới của mây hiện tại và mây +26, điểm xoắn mây. Kijun "phẳng" = đứng yên ≥ 8 nến (Ngày) / 4 nến (Tuần). Mây "dày" = dày ≥ 6% giá (Ngày) / 10% (Tuần).</li>
+          <li><b>Vùng hợp lưu</b>: mục tiêu nằm trong ±x% của một mốc Ichimoku. Điểm: mốc Tuần 2, mốc Ngày 1, Kijun phẳng +1, Kijun dài +0.5, mây dày / xoắn mây +0.5. Tổng ≥ 4 Mạnh · ≥ 2 Có · &gt; 0 Yếu.</li>
+          <li><b>Kịch bản</b>: <b>A</b> — có chướng ngại mạnh (mây dày, xoắn mây, Kijun dài Tuần, Kijun Tuần phẳng) nằm trước mục tiêu → chốt một phần tại đó · <b>B</b> — mục tiêu trùng Kijun Tuần phẳng (hợp lưu vàng) → nắm giữ, theo dõi khối lượng · <b>C</b> — hợp lưu thường · <b>D</b> — đường thoáng / không hợp lưu.</li>
+          <li><b>R:R</b>: vào ở giá hiện tại; dừng lỗ = đỉnh TR − 1 ATR14 (đã phá vỡ lên) / dưới đáy TR (còn trong TR); hướng xuống đối xứng.</li>
+        </ol>
+        <i>Count tỉ lệ với số nhịp dao động trong TR nên TR càng dài mục tiêu càng xa — luôn xem T1 và các hợp lưu. Đây là công cụ tham chiếu, không phải khuyến nghị mua bán; cần kiểm chứng (backtest) trước khi dùng.</i>
+      </details>
+      <div id="wyWarn"></div>
+      <div class="wy-grid">
+        <div>
+          <div class="panel" style="padding:8px">
+            <h3 style="margin:2px 6px 6px"><span id="wyTitle">Biểu đồ</span></h3>
+            <div id="wyChart"></div>
+            <div class="legend">
+              <span>Giá: nghìn đồng</span><span><i style="background:#e5a50a"></i>Kijun</span><span><i style="background:#22a06b"></i>Senkou A</span>
+              <span><i style="background:#e2483d"></i>Senkou B</span><span><i style="background:#00bcd4"></i>Kijun 65</span><span><i style="background:#ff7f50;height:4px"></i>Kijun 129</span>
+              <span><i style="background:#4c8dff;height:3px"></i>Vùng TR (đỉnh / giữa / đáy)</span><span>--- T1 T2 T3 · đường nét đứt Kijun Tuần</span>
+              <span>▲ SOS/LPS/Spring ▼ SOW/UT</span>
+            </div>
+          </div>
+          <div class="wy-below">
+            <div class="panel"><h3>Thang giá &amp; hợp lưu <span class="live">· ⚠ = chướng ngại mạnh</span></h3><div class="st-scroll" style="max-height:520px"><table class="wy-ladder" id="wyLadder"></table></div></div>
+            <div class="panel"><h3>Sự kiện Wyckoff</h3><table id="wyEvents"></table>
+              <h3 style="margin-top:14px">Rủi ro / lợi nhuận</h3><div id="wyRisk"></div></div>
+          </div>
+          <details class="panel" style="margin-top:16px"><summary class="muted" style="cursor:pointer">Biểu đồ Point &amp; Figure của TR (kiểm tra số cột)</summary><pre id="wyPnf"></pre></details>
+        </div>
+        <div>
+          <div class="panel"><h3>Vùng tích lũy / phân phối</h3><div id="wyTr" class="muted">Đang tải…</div></div>
+          <div class="panel"><h3>Mục tiêu Wyckoff × Ichimoku</h3><div class="st-scroll" style="max-height:none"><table id="wyTargets"></table></div></div>
+          <div class="panel"><h3>Kịch bản</h3><div id="wyScen" class="muted">–</div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+// One number style for the whole app, like the SSI/Vietcap boards: dot decimal, comma thousands (-14.3%, 1,234.56)
+const fmt = (v, d=0) => v == null ? "–" : Number(v).toLocaleString("en-US", {maximumFractionDigits:d, minimumFractionDigits:d});
+const cls = v => v > 0 ? "pos" : v < 0 ? "neg" : "muted";
+const ratingCls = r => /Bull/.test(r) ? "bg-pos" : /Bear/.test(r) ? "bg-neg" : "bg-neu";
+const VI = { above_cloud:"Trên mây", below_cloud:"Dưới mây", inside_cloud:"Trong mây", bullish:"Tăng", bearish:"Giảm",
+             none:"Không", above_price:"Trên giá", below_price:"Dưới giá", overbought:"Quá mua", oversold:"Quá bán", unknown:"–" };
+const vi = v => VI[v] ?? v;
+
+async function api(path, opts={}) {
+  const headers = {"Content-Type":"application/json"};
+  const k = $("apiKey"); if (k && k.value) headers["X-API-Key"] = k.value;
+  const r = await fetch(path, {...opts, headers});
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(body.detail || r.statusText);
+  return body;
+}
+
+// ---------- charts ----------
+const base = { layout:{background:{color:"#171d24"}, textColor:"#8b95a1"},
+  grid:{vertLines:{color:"#20272f"}, horzLines:{color:"#20272f"}}, rightPriceScale:{borderColor:"#2a323c"},
+  timeScale:{borderColor:"#2a323c"}, crosshair:{mode:0} };
+const mk = (el, h) => LightweightCharts.createChart($(el), {...base, height:h, autoSize:true});
+const price = mk("priceChart", 420), macdC = mk("macdChart", 130), rsiC = mk("rsiChart", 130), scoreC = mk("scoreChart", 130);
+// Price axis in thousand VND with 2 decimals: 50400 -> 50.40 (minMove 10 VND = 0.01)
+const PRICE_FMT = {type:"custom", minMove:10, formatter: p => (p / 1000).toFixed(2)};
+const PX = {priceFormat: PRICE_FMT};
+const px = v => v == null ? "–" : PRICE_FMT.formatter(v);  // same unit in the summary panel
+const candle = price.addCandlestickSeries({upColor:"#22a06b", downColor:"#e2483d", borderVisible:false, wickUpColor:"#22a06b", wickDownColor:"#e2483d", ...PX});
+const line = (c, color, w=1, extra={}) => c.addLineSeries({color, lineWidth:w, priceLineVisible:false, lastValueVisible:false, ...extra});
+// Kumo: lightweight-charts has no fill between two lines, so a custom series paints the area between Senkou A and B,
+// green where A >= B (mây tăng), red where A < B (mây giảm), split exactly at the twist. Data: {time, a, b}.
+class KumoRenderer {
+  update(d, o) { this.d = d; this.o = o; }
+  draw(target, toY) {
+    const d = this.d, o = this.o;
+    if (!d || !d.visibleRange || d.bars.length < 2) return;
+    target.useBitmapCoordinateSpace(({context: ctx, horizontalPixelRatio: hr, verticalPixelRatio: vr}) => {
+      const poly = (pts, up) => {
+        ctx.fillStyle = up ? o.upColor : o.downColor; ctx.beginPath();
+        pts.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.closePath(); ctx.fill();
+      };
+      const from = Math.max(0, d.visibleRange.from - 1), to = Math.min(d.bars.length - 1, d.visibleRange.to + 1);
+      for (let i = from; i < to; i++) {
+        const p = d.bars[i], q = d.bars[i + 1];
+        const a0 = toY(p.originalData.a), b0 = toY(p.originalData.b), a1 = toY(q.originalData.a), b1 = toY(q.originalData.b);
+        if ([a0, b0, a1, b1].some(v => v == null)) continue;
+        const x0 = p.x * hr, x1 = q.x * hr, Y = v => v * vr;
+        const d0 = b0 - a0, d1 = b1 - a1;          // y grows downwards: d >= 0 <=> A >= B (bullish)
+        if (d0 * d1 < 0) {
+          const t = d0 / (d0 - d1), xm = x0 + (x1 - x0) * t, ym = Y(a0 + (a1 - a0) * t);
+          poly([[x0, Y(a0)], [xm, ym], [x0, Y(b0)]], d0 > 0);
+          poly([[xm, ym], [x1, Y(a1)], [x1, Y(b1)]], d1 > 0);
+        } else poly([[x0, Y(a0)], [x1, Y(a1)], [x1, Y(b1)], [x0, Y(b0)]], (d0 || d1) >= 0);
+      }
+    });
+  }
+}
+class KumoView {
+  constructor() { this.r = new KumoRenderer(); }
+  renderer() { return this.r; }
+  update(d, o) { this.r.update(d, o); }
+  priceValueBuilder(row) { return [row.a, row.b, row.b]; }
+  isWhitespace(row) { return row.a == null || row.b == null; }
+  defaultOptions() { return {upColor:"rgba(34,160,107,.16)", downColor:"rgba(226,72,61,.16)"}; }
+  destroy() {}
+}
+const kumo = price.addCustomSeries(new KumoView(), {priceLineVisible:false, lastValueVisible:false, crosshairMarkerVisible:false, ...PX});
+const kumoData = (sa, sb) => {
+  const b = new Map(sb.map(x => [x.time, x.value]));
+  return sa.filter(x => b.has(x.time)).map(x => ({time:x.time, a:x.value, b:b.get(x.time)}));
+};
+const tenkan = line(price, "#4c8dff", 1, PX), kijun = line(price, "#e5a50a", 1, PX), spanA = line(price, "#22a06b", 1, PX),
+      spanB = line(price, "#e2483d", 1, PX), chikou = line(price, "#b58cff", 2, PX);  // Chikou: solid, as thick as RSI
+const LONG_COLORS = {"65":"#00bcd4", "129":"#ff7f50"};
+const longK = {};
+const vol = price.addHistogramSeries({priceScaleId:"vol", priceFormat:{type:"volume"}, priceLineVisible:false, lastValueVisible:false});
+const volMa = line(price, "#8b95a1", 1, {priceScaleId:"vol"});
+price.priceScale("vol").applyOptions({scaleMargins:{top:0.8, bottom:0}});
+const hist = macdC.addHistogramSeries({priceLineVisible:false, lastValueVisible:false});
+const macdL = line(macdC, "#4c8dff"), sigL = line(macdC, "#e5a50a");
+const rsiL = line(rsiC, "#b58cff", 2, {lastValueVisible:true});
+[70, 30].forEach(v => rsiL.createPriceLine({price:v, color:"#56606b", lineStyle:2, lineWidth:1, axisLabelVisible:false}));
+// score: histogram coloured by rating band, fixed −100…+100 scale with the band thresholds
+const scoreH = scoreC.addHistogramSeries({priceLineVisible:false, lastValueVisible:true, base:0,
+  priceFormat:{type:"price", precision:0, minMove:1},
+  autoscaleInfoProvider: () => ({priceRange:{minValue:-100, maxValue:100}})});
+[60, 25, -25, -60].forEach(v => scoreH.createPriceLine({price:v, color: v > 0 ? "rgba(34,160,107,.5)" : "rgba(226,72,61,.5)",
+  lineStyle:2, lineWidth:1, axisLabelVisible:true}));
+scoreH.createPriceLine({price:0, color:"#56606b", lineStyle:0, lineWidth:1, axisLabelVisible:false});
+const scoreColor = v => v >= 60 ? "#22a06b" : v >= 25 ? "rgba(34,160,107,.55)" : v > -25 ? "rgba(139,149,161,.55)"
+                      : v > -60 ? "rgba(226,72,61,.55)" : "#e2483d";
+
+// keep the three charts scrolling together
+const charts = [price, macdC, rsiC, scoreC]; let syncing = false;
+charts.forEach(c => c.timeScale().subscribeVisibleLogicalRangeChange(r => {
+  if (syncing || !r) return; syncing = true; charts.forEach(o => o !== c && o.timeScale().setVisibleLogicalRange(r)); syncing = false;
+}));
+
+let TF = "1h", liveTimer = null, lastChart = null, lastT = null;
+
+function drawChart(d) {
+  lastChart = d; lastT = d.candles.length ? d.candles[d.candles.length - 1].time : null;
+  charts.forEach(c => c.applyOptions({timeScale:{timeVisible: !!d.intraday, secondsVisible:false}}));
+  candle.setData(d.candles);
+  tenkan.setData(d.tenkan); kijun.setData(d.kijun); spanA.setData(d.senkou_a); spanB.setData(d.senkou_b); chikou.setData(d.chikou);
+  kumo.setData(kumoData(d.senkou_a, d.senkou_b));
+  vol.setData(d.volume.map(v => ({time:v.time, value:v.value, color: v.up ? "rgba(34,160,107,.45)" : "rgba(226,72,61,.45)"})));
+  volMa.setData(d.vol_ma20);
+  Object.entries(d.long_kijun || {}).forEach(([n, s]) => {
+    if (!longK[n]) longK[n] = line(price, LONG_COLORS[n] || "#9aa4ae", n === "129" ? 2 : 1, {lineStyle: 0, ...PX});
+    longK[n].setData(s);
+  });
+  const pr = d.params;
+  $("lgT").textContent = `Tenkan ${pr.tenkan}`; $("lgK").textContent = `Kijun ${pr.kijun}`;
+  $("lgA").textContent = `Senkou A +${pr.senkou_a ?? pr.displacement}`;
+  $("lgB").textContent = `Senkou B ${pr.senkou_b}`; $("lgC").textContent = `Chikou ${pr.chikou ?? pr.displacement}`;
+  if (d.default_params) { ICHI_DEF = d.default_params; ichiInputs(); }
+  hist.setData(d.macd_hist.map(v => ({...v, color: v.value >= 0 ? "rgba(34,160,107,.6)" : "rgba(226,72,61,.6)"})));
+  macdL.setData(d.macd); sigL.setData(d.macd_signal); rsiL.setData(d.rsi);
+  scoreH.setData((d.score || []).map(v => ({...v, color: scoreColor(v.value)})));
+  candle.setMarkers(d.markers.map(m => m.type === "breakout"
+    ? {time:m.time, position:"belowBar", color:"#22a06b", shape:"arrowUp", text:"BO"}
+    : {time:m.time, position:"aboveBar", color:"#e2483d", shape:"arrowDown", text:"BD"}));
+  price.timeScale().fitContent();
+  $("chartTitle").textContent = `${d.symbol} · ${tfLabel(d.timeframe)} · nguồn: ${d.source}`;
+}
+
+const tfLabel = t => ({"5m":"5 phút","15m":"15 phút","30m":"30 phút","1h":"60 phút","1D":"Ngày","1W":"Tuần"}[t] || t);
+
+// Realtime: every 5 s pull the last 2 candles (REST + SSI stream) and update the chart in place.
+async function pollLive(sym) {
+  try {
+    const r = await api(`/api/market/live/${sym}?timeframe=${TF}`);
+    if (!lastChart || r.symbol !== lastChart.symbol || r.timeframe !== lastChart.timeframe) return;
+    r.candles.filter(c => lastT == null || c.time >= lastT).forEach(c => {
+      lastT = c.time;
+      candle.update({time:c.time, open:c.open, high:c.high, low:c.low, close:c.close});
+      vol.update({time:c.time, value:c.volume, color: c.close >= c.open ? "rgba(34,160,107,.45)" : "rgba(226,72,61,.45)"});
+    });
+    const lastC = r.candles[r.candles.length - 1];
+    if (lastC && lastC.time === lastT && $("sumVol")) $("sumVol").textContent = fmt(lastC.volume);
+    const st = r.stream || {}, b = $("liveBadge");
+    const on = r.streaming && ["connected","reconnected"].includes(st.state);
+    b.className = "live" + (on ? " on" : "");
+    const last = r.candles[r.candles.length - 1];
+    b.textContent = on ? `SSI realtime · ${last ? last.label + " · " + PRICE_FMT.formatter(last.close) : ""}`
+                       : (st.enabled ? `stream: ${st.state}${st.error ? " (" + st.error + ")" : ""}` : "stream tắt");
+  } catch (e) { $("liveBadge").className = "live"; $("liveBadge").textContent = `live lỗi: ${e.message}`; }
+}
+function startLive(sym) {
+  clearInterval(liveTimer);
+  pollLive(sym);
+  liveTimer = setInterval(() => document.visibilityState === "visible" && pollLive(sym), 5000);
+}
+
+function drawSummary(a) {
+  const i = a.ichimoku, m = a.macd, r = a.rsi, b = a.volume_breakout, tc = i.time_cycles;
+  const lv = Object.entries(i.long_kijun).map(([k,v]) =>
+      `<tr><td>Kijun ${k}${k === "129" ? " (Dao Găm)" : ""}</td><td>${px(v.value)} · ` +
+      `<span class="${v.price_above ? "pos" : "neg"}">${v.price_above ? "giá trên" : "giá dưới"} ${fmt(v.distance_pct,1)}%</span></td></tr>`).join("");
+  const p = i.params;
+  const cyc = (x, name) => `${name} ${x.pivot_date} (${px(x.pivot_price)}) · ${x.bars_since} nến` +
+      (x.cycle_hit.length ? ` · <b class="pos">chạm chu kỳ ${x.cycle_hit.join(",")}</b>` : "") +
+      (x.next_cycle ? ` · mốc ${x.next_cycle} sau ${x.bars_to_next} nến (~${x.next_cycle_date})` : "");
+  $("summary").innerHTML = `
+    <div class="muted">${tfLabel(a.timeframe)}: ${a.date}</div>
+    <div class="sum-line"><b style="font-size:20px">${a.symbol}</b>
+      <span title="Giá (nghìn đồng)">${px(a.close)}</span>
+      <span class="${cls(a.change_pct)}" title="% thay đổi">${a.change_pct > 0 ? "+" : ""}${fmt(a.change_pct, 2)}%</span>
+      <span id="sumVol" title="KLGD ${tfLabel(a.timeframe)} (cổ phiếu)">${fmt(a.volume)}</span></div>
+    <div style="margin:8px 0"><span class="score ${cls(a.score)}">${a.score}</span><span class="rating ${ratingCls(a.rating)}">${a.rating}</span></div>
+    <table class="kv">
+      <tr><td>Thiết lập</td><td>Ichimoku Trịnh Phát ${p.tenkan}-${p.kijun}-${p.displacement}-${p.senkou_b}${(p.chikou ?? p.displacement) !== p.displacement ? ` · Chikou ${p.chikou}` : ""}${ichiCustom() ? " (tuỳ chỉnh)" : ""} · Kijun ${p.long_kijun.join("/")}</td></tr>
+      <tr><td>Ichimoku</td><td>${vi(i.price_vs_cloud)} · TK cross: ${vi(i.tk_cross)} · Chikou: ${vi(i.chikou)}</td></tr>
+      <tr><td>Mây tương lai</td><td>${vi(i.future_cloud)}</td></tr>
+      <tr><td>MACD</td><td>${fmt(m.macd,2)} / ${fmt(m.signal,2)} · cross: ${vi(m.cross)}</td></tr>
+      <tr><td>RSI 14</td><td>${fmt(r.rsi,1)} (${vi(r.zone)})</td></tr>
+      <tr><td>KL / MA20</td><td>${fmt(b.vol_ratio,2)}x ${b.breakout_today ? '<b class="pos">· BREAKOUT</b>' : ""}${b.breakdown_today ? '<b class="neg">· BREAKDOWN</b>' : ""}</td></tr>
+      <tr><td>Kháng cự 20</td><td>${px(b.resistance_20)} (${fmt(b.distance_to_resistance_pct,1)}%)</td></tr>
+      <tr><td>Hỗ trợ 20</td><td>${px(b.support_20)}</td></tr>
+      ${lv}
+    </table>
+    <div class="muted" style="margin-top:8px;font-size:12px">Chu kỳ thời gian (9/17/26/33/42/65/76/129/172/200/257):</div>
+    <div class="muted" style="margin-top:6px;font-size:12px">${cyc(tc.from_high,"Đỉnh")}<br>${cyc(tc.from_low,"Đáy")}</div>
+    <ul class="notes">${a.score_notes.map(n => `<li>${n}</li>`).join("")}</ul>`;
+}
+
+// Custom Ichimoku Trịnh Phát for the Cổ phiếu chart + summary: saved in localStorage "pstock.ichi" (changed fields
+// only), sent as query params. ICHI_DEF = the app setup, refreshed from every chart payload.
+const ICHI_FIELDS = {tenkan:"ichiTenkan", kijun:"ichiKijun", senkou_a:"ichiSenkouA", senkou_b:"ichiSenkouB", chikou:"ichiChikou"};
+let ICHI_DEF = {tenkan:9, kijun:17, senkou_a:26, senkou_b:33, chikou:26}, ICHI = {};
+try { ICHI = JSON.parse(localStorage.getItem("pstock.ichi") || "{}") || {}; } catch (e) { ICHI = {}; }
+const ichiCustom = () => Object.keys(ICHI_FIELDS).some(k => ICHI[k] != null && ICHI[k] !== ICHI_DEF[k]);
+function ichiInputs() {
+  Object.entries(ICHI_FIELDS).forEach(([k, id]) => {
+    const v = ICHI[k] ?? ICHI_DEF[k]; $(id).value = v; $(id).classList.toggle("changed", v !== ICHI_DEF[k]);
+    $(id).title = `Mặc định ${ICHI_DEF[k]}`;
+  });
+}
+const ichiQuery = () => Object.keys(ICHI_FIELDS).filter(k => ICHI[k] != null && ICHI[k] !== ICHI_DEF[k])
+  .map(k => `&${k}=${ICHI[k]}`).join("");
+function ichiSave() { try { localStorage.setItem("pstock.ichi", JSON.stringify(ICHI)); } catch (e) {} }
+function ichiApply() {
+  const next = {};
+  for (const [k, id] of Object.entries(ICHI_FIELDS)) {
+    const v = parseInt($(id).value, 10);
+    if (!(v >= 1 && v <= 300)) { alert(`${k}: nhập số nguyên 1…300`); $(id).focus(); return; }
+    if (v !== ICHI_DEF[k]) next[k] = v;
+  }
+  ICHI = next; ichiSave(); ichiInputs(); load();
+}
+function ichiReset() { ICHI = {}; ichiSave(); ichiInputs(); load(); }
+ichiInputs();
+$("btnIchiApply").onclick = ichiApply; $("btnIchiReset").onclick = ichiReset;
+Object.values(ICHI_FIELDS).forEach(id => $(id).addEventListener("keydown", e => { if (e.key === "Enter") ichiApply(); }));
+
+async function load(sym) {
+  sym = (sym || $("symbol").value).trim().toUpperCase(); $("symbol").value = sym;
+  const q = `?timeframe=${TF}` + ($("refresh").checked ? "&refresh=true" : "") + ichiQuery();
+  $("btnLoad").disabled = true; $("summary").innerHTML = '<span class="muted">Đang tải…</span>'; $("aiText").textContent = "";
+  try {
+    const a = await api(`/api/analysis/${sym}${q}`);   // fetch first so the chart reuses cache
+    drawSummary(a);
+    drawChart(await api(`/api/analysis/${sym}/chart?timeframe=${TF}${ichiQuery()}`));
+    startLive(sym);
+  } catch (e) { $("summary").innerHTML = `<div class="err">${e.message}</div>`; clearInterval(liveTimer); }
+  finally { $("btnLoad").disabled = false; }
+}
+
+async function askAI() {
+  const sym = $("symbol").value.trim().toUpperCase();
+  $("btnAI").disabled = true; $("aiText").textContent = "Claude đang phân tích…";
+  try {
+    const r = await api(`/api/ai/analyze/${sym}`, {method:"POST", body: JSON.stringify({question: $("aiQuestion").value || null, timeframe: TF})});
+    $("aiText").classList.remove("muted");
+    $("aiText").innerHTML = r.commentary.replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]))
+      .replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/^#+\s*(.+)$/gm, "<b>$1</b>");
+  } catch (e) { $("aiText").innerHTML = `<div class="err">${e.message}</div>`; }
+  finally { $("btnAI").disabled = false; }
+}
+
+async function scan() {
+  $("btnScan").disabled = true; $("scanStatus").textContent = "Đang quét…"; $("scanTable").innerHTML = "";
+  try {
+    const symbols = $("scanSymbols").value.split(/[\s,;]+/).filter(Boolean);
+    const r = await api("/api/analysis/scan", {method:"POST", body: JSON.stringify({symbols, min_score: Number($("minScore").value), timeframe: TF})});
+    $("scanStatus").textContent = `${r.count} mã · bấm vào dòng để xem chi tiết`;
+    $("scanTable").innerHTML = `<tr><th>Mã</th><th>Ngày</th><th title="nghìn đồng">Giá (nghìn)</th><th>%</th><th>Điểm</th><th>Đánh giá</th><th>Ichimoku</th>
+      <th>RSI</th><th>MACD cross</th><th>KL/MA20</th><th>Breakout</th><th>Chu kỳ</th></tr>` +
+      r.results.map(x => x.error ? `<tr><td>${x.symbol}</td><td colspan="11" class="err">${x.error}</td></tr>` :
+      `<tr class="click" data-s="${x.symbol}"><td><b>${x.symbol}</b></td><td class="muted">${x.date}</td><td>${px(x.close)}</td>
+       <td class="${cls(x.change_pct)}">${fmt(x.change_pct,2)}</td><td class="${cls(x.score)}"><b>${x.score}</b></td>
+       <td><span class="rating ${ratingCls(x.rating)}" style="margin:0">${x.rating}</span></td><td>${vi(x.price_vs_cloud)}</td>
+       <td>${fmt(x.rsi,1)}</td><td>${vi(x.macd_cross)}</td><td>${fmt(x.vol_ratio,2)}</td>
+       <td>${x.breakout ? '<b class="pos">✓</b>' : ""}</td><td>${x.cycle_hit.join(",")}</td></tr>`).join("");
+    document.querySelectorAll("#scanTable tr.click").forEach(tr => tr.onclick = () => openStock(tr.dataset.s));
+  } catch (e) { $("scanStatus").innerHTML = `<span class="err">${e.message}</span>`; }
+  finally { $("btnScan").disabled = false; }
+}
+
+// ---------------- Scanner: sức mạnh cổ phiếu (RS Rating) ----------------
+const ST = { data: null, timer: null, sort: "composite", dir: -1, legendDone: false };
+const GROUP_VI = { trend: "Xu hướng", momentum: "Động lượng", flow: "Dòng tiền" };
+const rsCls = v => v == null ? "" : v >= 80 ? "rs-hi" : v >= 70 ? "rs-mid" : v < 30 ? "rs-lo" : "";
+async function loadStrength() {
+  clearTimeout(ST.timer);
+  if ($("tab-scan").classList.contains("hidden")) return;
+  try {
+    const w = bdWatch();
+    ST.data = await api("/api/board/strength" + (w.length ? "?watch=" + encodeURIComponent(w.join(",")) : ""));
+    drawStrength();
+  } catch (e) { $("stStatus").innerHTML = `<span class="err">${esc(e.message)}</span>`; }
+  const p = ST.data && ST.data.progress;
+  ST.timer = setTimeout(loadStrength, p && p.done < p.total ? 3000 : 300000);   // fast while computing
+}
+function drawStrength() {
+  const d = ST.data; if (!d) return;
+  const p = d.progress, L = d.legend;
+  if (!ST.legendDone) {
+    ST.legendDone = true;
+    $("stTechLegend").textContent = Object.values(L.tech).map(t => `${t.label} (+${t.points}, ${GROUP_VI[t.group]})`).join(" · ");
+    $("stTplLegend").textContent = Object.values(L.template).join(" · ");
+  }
+  $("stStatus").textContent = p.done < p.total ? `Đang tính ${p.done}/${p.total} mã… bảng xếp hạng cập nhật dần`
+    : `Tính ngày ${d.day} · ${d.rows.length} mã` + (d.failed.length ? ` · ${d.failed.length} mã thiếu dữ liệu (${d.failed.slice(0, 5).join(", ")}${d.failed.length > 5 ? "…" : ""})` : "");
+  const sel = $("stSector"), cur = sel.value;
+  sel.innerHTML = '<option value="">Tất cả ngành</option>' +
+    d.sectors.map(s => `<option value="${esc(s.name)}"${s.name === cur ? " selected" : ""}>${s.rank}. ${esc(s.name)}</option>`).join("");
+  $("stSecTable").innerHTML = `<tr><th>#</th><th>Ngành</th><th title="RS Rating trung bình của các mã trong ngành">RS TB</th>
+      <th title="Số mã RS Rating ≥ ${L.leader_rs} / số mã">Dẫn dắt</th><th>Mạnh nhất</th></tr>` +
+    d.sectors.map(s => `<tr class="click${s.name === cur ? " sel" : ""}" data-sec="${esc(s.name)}"><td class="muted">${s.rank}</td>
+      <td>${esc(s.name)}</td><td><span class="rsb ${rsCls(s.rs_avg)}">${fmt(s.rs_avg, 0)}</span></td><td>${s.leaders}/${s.count}</td>
+      <td class="muted">${s.top.join(", ")}</td></tr>`).join("");
+
+  const q = $("stSearch").value.trim().toUpperCase(), minRS = Number($("stMinRS").value) || 0;
+  const top3 = new Set(d.sectors.slice(0, 3).map(s => s.name));
+  let rows = d.rows.filter(r => (!q || r.symbol.includes(q)) && (!cur || r.sectors.includes(cur))
+    && (!$("stTT").checked || r.template_pass) && (!$("stTop3").checked || r.sectors.some(n => top3.has(n)))
+    && (!minRS || (r.rs_rating ?? 0) >= minRS));
+  const key = r => ST.sort === "template" ? r.template_count + (r.template_pass ? 10 : 0) : r[ST.sort];
+  rows = [...rows].sort((a, b) => {
+    const x = key(a), y = key(b);
+    if (x == null && y == null) return 0; if (x == null) return 1; if (y == null) return -1;
+    return (x < y ? -1 : x > y ? 1 : 0) * ST.dir || a.rank - b.rank;
+  });
+  $("stCount").textContent = `Cổ phiếu · ${rows.length} mã` + (cur ? ` · ngành ${cur}` : "");
+  const tipTech = r => Object.entries(L.tech).map(([k, t]) => `${r.tech_hits.includes(k) ? "✓" : "✗"} ${t.label} (+${t.points})`).join("\n");
+  const tipTpl = r => Object.entries(L.template).map(([k, lbl]) => `${r.template[k] ? "✓" : "✗"} ${lbl}`).join("\n") +
+    `\nCách đỉnh 52 tuần ${fmt(r.from_high_pct, 1)}% · trên đáy 52 tuần ${fmt(r.from_low_pct, 1)}%`;
+  const tipRS = r => `ROC 63/126/189/252 phiên: ${["63", "126", "189", "252"].map(n => r.roc[n] == null ? "–" : fmt(r.roc[n], 1) + "%").join(" / ")}`;
+  const rsLine = r => r.rs_leads ? '<b class="pos" title="Đường RS lập đỉnh mới trước giá: tín hiệu rất mạnh">★</b>'
+    : r.rs_line_high ? '<span class="pos" title="Đường RS (giá CP / VN-Index) ở đỉnh 52 tuần">▲</span>' : "";
+  const th = (k, label, tip = "") => `<th data-k="${k}"${ST.sort === k ? ' class="sorted"' : ""}${tip ? ` title="${esc(tip)}"` : ""}>${label}${ST.sort === k ? (ST.dir < 0 ? " ▼" : " ▲") : ""}</th>`;
+  $("stTable").innerHTML = `<tr>${th("rank", "#")}${th("symbol", "Mã")}<th>Ngành</th><th title="nghìn đồng">Giá</th>${th("change_pct", "%")}
+      ${th("rs_rating", "RS Rating", "1–99, ≥ 80 = dẫn dắt")}${th("rs_index", "RS/VNI", "(1 + %CP 3 tháng) / (1 + %VN-Index 3 tháng)")}
+      <th title="▲ đường RS ở đỉnh 52 tuần · ★ lập đỉnh trước giá">Đường RS</th>
+      ${th("tech", "Điểm KT", "0–100 · số nhỏ: Xu hướng · Động lượng · Dòng tiền")}${th("template", "Trend Tpl", "Minervini: 5 điều kiện")}
+      ${th("sector_rs", "Ngành", "RS TB của ngành")}${th("composite", "Tổng hợp", "40% RS + 40% KT + 20% ngành")}</tr>` +
+    (rows.length ? rows.map(r => `<tr class="click" data-s="${esc(r.symbol)}"><td class="muted">${r.rank}</td><td><b>${esc(r.symbol)}</b></td>
+      <td class="muted" title="${esc(r.sectors.join(", "))}">${esc(r.sector || "–")}</td><td>${px(r.close)}</td>
+      <td class="${cls(r.change_pct)}">${sign(r.change_pct)}%</td>
+      <td title="${esc(tipRS(r))}"><span class="rsb ${rsCls(r.rs_rating)}">${r.rs_rating ?? "–"}</span></td>
+      <td class="${r.rs_index == null ? "muted" : cls(r.rs_index - 1)}">${fmt(r.rs_index, 2)}</td><td>${rsLine(r)}</td>
+      <td title="${esc(tipTech(r))}"><b>${r.tech}</b> <span class="muted" style="font-size:11px">${r.tech_groups.trend}·${r.tech_groups.momentum}·${r.tech_groups.flow}</span></td>
+      <td title="${esc(tipTpl(r))}">${r.template_pass ? '<b class="pos">✓ Đạt</b>' : `<span class="muted">${r.template_count}/5</span>`}</td>
+      <td>${r.sector_rs == null ? "–" : fmt(r.sector_rs, 0)}</td><td><b>${fmt(r.composite, 1)}</b></td></tr>`).join("")
+     : `<tr><td colspan="12" class="muted">${p.done < p.total ? "Đang tính…" : "Không có mã nào thoả bộ lọc."}</td></tr>`);
+}
+$("stTable").onclick = e => {
+  const h = e.target.closest("th[data-k]");
+  if (h) { const k = h.dataset.k; ST.dir = ST.sort === k ? -ST.dir : (k === "rank" || k === "symbol" ? 1 : -1); ST.sort = k; drawStrength(); return; }
+  const tr = e.target.closest("tr[data-s]"); if (tr) openStock(tr.dataset.s);
+};
+$("stSecTable").onclick = e => {
+  const tr = e.target.closest("tr[data-sec]"); if (!tr) return;
+  $("stSector").value = $("stSector").value === tr.dataset.sec ? "" : tr.dataset.sec; drawStrength();
+};
+["stSearch", "stMinRS"].forEach(id => $(id).oninput = drawStrength);
+["stSector", "stTT", "stTop3"].forEach(id => $(id).onchange = drawStrength);
+$("btnStRefresh").onclick = async () => {
+  if (!confirm("Tính lại RS Rating và điểm cho toàn bộ các mã với dữ liệu mới nhất (khoảng 1–2 phút)?")) return;
+  try { await api("/api/board/strength/refresh", {method: "POST"}); loadStrength(); }
+  catch (e) { $("stStatus").innerHTML = `<span class="err">${esc(e.message)}</span>`; }
+};
+
+// ---------------- Xếp hạng ACC (Stock Strength Monitor V1, benchmark VN30) ----------------
+const ACC = { data: null, timer: null, mode: "combined", sort: "combined", dir: -1, sel: null, legendDone: false };
+const heat = (v, inv = false) => {
+  if (v == null) return '<span class="muted">–</span>';
+  const x = inv ? 100 - v : v, h = x >= 80 ? 5 : x >= 70 ? 4 : x >= 50 ? 3 : x >= 40 ? 2 : 1;
+  return `<span class="hm h${h}">${fmt(v, 0)}</span>`;
+};
+const sigTag = s => s ? `<span class="sig sig-${s.replace(/ /g, "-")}">${s}</span>` : "";
+const accDelta = r => {
+  const d = r.delta == null ? "" : `<span class="dl ${r.delta > 0 ? "up" : r.delta < 0 ? "dn" : "muted"}">${r.delta > 0 ? "+" : ""}${fmt(r.delta, 1)}</span>`;
+  const k = r.rank_change ? ` <span class="dl ${r.rank_change > 0 ? "up" : "dn"}" title="Thứ hạng phiên trước: ${r.prev_rank}">${r.rank_change > 0 ? "▲" : "▼"}${Math.abs(r.rank_change)}</span>` : "";
+  return d + k;
+};
+async function loadAcc() {
+  clearTimeout(ACC.timer);
+  if ($("tab-acc").classList.contains("hidden")) return;
+  try {
+    const w = bdWatch();
+    ACC.data = await api("/api/board/acc" + (w.length ? "?watch=" + encodeURIComponent(w.join(",")) : ""));
+    drawAcc();
+  } catch (e) { $("accStatus").innerHTML = `<span class="err">${esc(e.message)}</span>`; }
+  const p = ACC.data && ACC.data.progress;
+  ACC.timer = setTimeout(loadAcc, p && p.done < p.total ? 3000 : 300000);   // fast while computing
+}
+function accLegend(L) {
+  const list = (t, sc = {}) => [...Object.values(t), ...Object.values(sc)].map(x => `${x.label} (${x.points})`).join(" · ");
+  $("accLgTrend").textContent = list(L.trend); $("accLgMom").textContent = list(L.momentum, L.momentum_scaled);
+  $("accLgFlow").textContent = list(L.flow, L.flow_scaled); $("accLgIchi").textContent = list(L.ichimoku);
+  $("accLgSetup").textContent = list(L.setup); $("accLgRisk").textContent = list(L.risk);
+  const p = L.ichimoku_params; $("accLgIchiP").textContent = `${p.tenkan}-${p.kijun}-${p.senkou_b}, dịch ${p.displacement}`;
+  $("accSig").innerHTML = '<option value="">Tất cả</option>' + L.signals.map(s => `<option>${s}</option>`).join("");
+}
+function drawAccOverview(d) {
+  const o = d.overview, n = o.count || 1, pct = v => fmt(v / n * 100, 0) + "%";
+  const mx = Math.max(1, ...o.distribution);
+  const sigs = Object.entries(o.signals).filter(([, v]) => v).map(([k, v]) => `${sigTag(k)} ${v}`).join(" &nbsp;");
+  $("accOv").innerHTML = `
+    <div class="acc-card"><div class="n">Universe · ${esc(d.date || "–")}</div><div class="v">${o.count} mã</div>
+      <div class="b">Combined trung bình ${fmt(o.avg_combined, 1)}</div></div>
+    <div class="acc-card"><div class="n">Strong ≥ 80 / Weak &lt; 40</div><div class="v"><span class="pos">${o.strong}</span> / <span class="neg">${o.weak}</span></div>
+      <div class="b">${pct(o.strong)} / ${pct(o.weak)}</div></div>
+    <div class="acc-card"><div class="n">Trên MA20 · MA50 · MA200</div><div class="v" style="font-size:16px">${pct(o.above["20"])} · ${pct(o.above["50"])} · ${pct(o.above["200"])}</div>
+      <div class="b">${o.above["20"]} · ${o.above["50"]} · ${o.above["200"]} mã</div></div>
+    <div class="acc-card"><div class="n">Phân bổ Combined</div>
+      <div class="acc-dist">${o.distribution.map((v, i) => `<i style="height:${v / mx * 100}%;${i >= 8 ? "background:var(--up)" : i < 4 ? "background:var(--down)" : ""}" title="${i * 10}–${i * 10 + 10}: ${v} mã"></i>`).join("")}</div>
+      <div class="acc-dist-l"><span>0</span><span>50</span><span>100</span></div></div>
+    <div class="acc-card wide"><div class="n">Ngành mạnh nhất (Combined TB) · bấm để lọc</div>
+      <div class="b" style="font-size:12px;color:var(--text)">${o.sectors.slice(0, 5).map((s, i) => `${i + 1}. <a href="#" data-asec="${esc(s.name)}" style="color:inherit">${esc(s.name)}</a> <b>${fmt(s.combined, 0)}</b> <span class="muted">(${s.top.join(", ")})</span>`).join("<br>") || "–"}</div></div>
+    <div class="acc-card wide"><div class="n">Tín hiệu</div><div class="b" style="line-height:2">${sigs || "–"}</div></div>`;
+}
+function accRows() {
+  const d = ACC.data; if (!d) return [];
+  const q = $("accSearch").value.trim().toUpperCase(), sec = $("accSector").value;
+  const minS = Number($("accMinS").value) || 0, minRS = Number($("accMinRS").value) || 0;
+  const setup = $("accSetup").value, risk = $("accRisk").value, trend = $("accTrend").value, sig = $("accSig").value;
+  let rows = d.rows.filter(r => (!q || r.symbol.includes(q)) && (!sec || r.sectors.includes(sec))
+    && (!minS || (r.combined ?? 0) >= minS) && (!minRS || (r.rs ?? 0) >= minRS)
+    && (!setup || r.setup_state === setup) && (!risk || r.risk_level === risk)
+    && (!trend || r.trend_state === trend) && (!sig || r.signal === sig));
+  // Top N always follows the selected ranking mode; the column sort only reorders what is shown
+  const mk = ACC.mode;
+  rows = [...rows].sort((a, b) => (b[mk] ?? -1) - (a[mk] ?? -1) || (a.rank ?? 1e9) - (b.rank ?? 1e9));
+  const top = Number($("accTop").value) || 0;
+  if (top) rows = rows.slice(0, top);
+  return rows.sort((a, b) => {
+    const x = a[ACC.sort], y = b[ACC.sort];
+    if (x == null && y == null) return 0; if (x == null) return 1; if (y == null) return -1;
+    return (x < y ? -1 : x > y ? 1 : 0) * ACC.dir || (a.rank ?? 1e9) - (b.rank ?? 1e9);
+  });
+}
+function drawAcc() {
+  const d = ACC.data; if (!d) return;
+  const p = d.progress;
+  if (!ACC.legendDone) { ACC.legendDone = true; accLegend(d.legend); }
+  $("accStatus").textContent = p.done < p.total ? `Đang tính ${p.done}/${p.total} mã… bảng xếp hạng cập nhật dần`
+    : `Phiên ${d.date || "–"} so với ${d.prev_date || "–"} · ${d.rows.length} mã` + (d.failed.length ? ` · ${d.failed.length} mã thiếu dữ liệu (${d.failed.slice(0, 5).join(", ")}${d.failed.length > 5 ? "…" : ""})` : "");
+  drawAccOverview(d);
+  const sel = $("accSector"), cur = sel.value;
+  sel.innerHTML = '<option value="">Tất cả ngành</option>' +
+    d.overview.sectors.map(s => `<option value="${esc(s.name)}"${s.name === cur ? " selected" : ""}>${esc(s.name)} (${fmt(s.combined, 0)})</option>`).join("");
+  const rows = accRows(), rk = {combined: "rank", swing: "rank_swing", position: "rank_position", setup: "rank_setup"}[ACC.mode];
+  $("accCount").textContent = `Xếp hạng ${ACC.mode[0].toUpperCase() + ACC.mode.slice(1)} · ${rows.length} mã` + (cur ? ` · ngành ${cur}` : "");
+  const th = (k, label, tip = "") => `<th data-k="${k}"${ACC.sort === k ? ' class="sorted"' : ""}${tip ? ` title="${esc(tip)}"` : ""}>${label}${ACC.sort === k ? (ACC.dir < 0 ? " ▼" : " ▲") : ""}</th>`;
+  $("accTable").innerHTML = `<tr>${th(rk, "#", "Thứ hạng theo chế độ đang chọn")}${th("symbol", "Mã")}<th title="nghìn đồng">Giá</th>${th("change_pct", "%")}
+      ${th("rs", "RS", "Relative Strength vs VN30 (percentile 0–100)")}${th("trend", "Trend")}${th("momentum", "Mom")}${th("flow", "Flow")}${th("ichimoku", "Ichi")}
+      ${th("swing", "Swing")}${th("position", "Position")}${th("combined", "Combined")}${th("delta", "Δ", "Combined phiên này − phiên trước; ▲▼ thay đổi thứ hạng")}
+      ${th("setup", "Setup", "Chất lượng điểm mua")}${th("risk", "Risk", "Càng cao càng rủi ro")}<th>Tín hiệu</th></tr>` +
+    (rows.length ? rows.map(r => `<tr class="click${r.symbol === ACC.sel ? " sel" : ""}" data-s="${esc(r.symbol)}">
+      <td class="muted">${r[rk] ?? "–"}</td><td><b>${esc(r.symbol)}</b></td><td>${px(r.close)}</td>
+      <td class="${cls(r.change_pct)}">${sign(r.change_pct)}%</td>
+      <td>${heat(r.rs)}</td><td>${heat(r.trend)}</td><td>${heat(r.momentum)}</td><td>${heat(r.flow)}</td><td>${heat(r.ichimoku)}</td>
+      <td>${heat(r.swing)}</td><td>${heat(r.position)}</td><td><b>${fmt(r.combined, 1)}</b></td><td>${accDelta(r)}</td>
+      <td>${heat(r.setup)}</td><td>${heat(r.risk, true)}</td><td>${sigTag(r.signal)}</td></tr>`).join("")
+     : `<tr><td colspan="16" class="muted">${p.done < p.total ? "Đang tính…" : "Không có mã nào thoả bộ lọc."}</td></tr>`);
+  drawAccDetail();
+}
+function drawAccDetail() {
+  const d = ACC.data, r = d && d.rows.find(x => x.symbol === ACC.sel);
+  if (!r) { $("accDet").innerHTML = '<div class="muted">Bấm vào một mã để xem chi tiết điểm.</div>'; return; }
+  const L = d.legend, x = r.detail;
+  const meter = v => `<div class="meter"><i style="width:${Math.max(0, Math.min(100, v || 0))}%"></i></div>`;
+  const conds = (tbl, hits) => Object.entries(tbl).map(([k, t]) => `<li class="${hits.includes(k) ? "" : "no"}"><span>${hits.includes(k) ? "✓" : "✗"} ${esc(t.label)}</span><b>${hits.includes(k) ? "+" + t.points : 0}</b></li>`).join("");
+  const scaled = (pts, info) => `<li><span>≈ ${esc(info)}</span><b>+${fmt(pts, 1)}</b></li>`;
+  const sec = (name, v, body) => `<h5><span>${name}</span><span>${fmt(v, 1)}</span></h5>${meter(v)}<ul>${body}</ul>`;
+  const pc = v => v == null ? "–" : sign(v) + "%";
+  const per = Object.keys(L.periods).map(k => `<li><span>${k}: CP ${pc(r.ret[k])} · vượt VN30 ${pc(r.excess[k])}</span><b>P ${r.p[k] == null ? "–" : fmt(r.p[k], 0)}</b></li>`).join("");
+  $("accDet").innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">
+      <div><b style="font-size:20px">${esc(r.symbol)}</b> <span class="muted">${esc(r.sector || "")}</span></div>${sigTag(r.signal)}</div>
+    <div class="muted" style="font-size:12px">${esc(r.date)} · ${px(r.close)} <span class="${cls(r.change_pct)}">${sign(r.change_pct)}%</span> · hạng ${r.rank ?? "–"}${r.prev_rank ? ` (phiên trước ${r.prev_rank})` : ""}</div>
+    <div style="display:flex;gap:16px;align-items:baseline;margin:6px 0">
+      <span class="big">${fmt(r.combined, 1)}</span><span class="muted">Swing <b style="color:var(--text)">${fmt(r.swing, 1)}</b> · Position <b style="color:var(--text)">${fmt(r.position, 1)}</b></span></div>
+    <div class="muted" style="font-size:12px">Δ ${accDelta(r) || "–"} · Setup <b style="color:var(--text)">${r.setup}</b> · Risk <b style="color:var(--text)">${r.risk}</b>${r.prev_signal && r.prev_signal !== r.signal ? ` · phiên trước ${sigTag(r.prev_signal)}` : ""}</div>
+    ${sec("RS vs VN30 (30%)", r.rs, per + `<li><span>RS Swing / RS Position</span><b>${fmt(r.rs_swing, 0)} / ${fmt(r.rs_position, 0)}</b></li>`
+      + (x.benchmark ? "" : '<li class="no"><span>Không có dữ liệu VN30: dùng % tăng tuyệt đối</span></li>'))}
+    ${sec("Trend (25%)", r.trend, conds(L.trend, r.hits.trend))}
+    ${sec("Momentum (20%)", r.momentum, conds(L.momentum, r.hits.momentum) + scaled(x.rsi_pts, `RSI14 = ${fmt(x.rsi, 1)}`)
+      + scaled((r.roc_pct || 0) / 5, `ROC20 = ${pc(x.roc20)} (P ${fmt(r.roc_pct, 0)})`))}
+    ${sec("Flow (15%)", r.flow, conds(L.flow, r.hits.flow) + scaled(x.flow_pts.rvol, `RVOL = ${fmt(x.rvol, 2)}`)
+      + scaled(x.flow_pts.cmf, `CMF20 = ${fmt(x.cmf, 3)}`) + scaled(x.flow_pts.mfi, `MFI14 = ${fmt(x.mfi, 1)}`))}
+    ${sec("Ichimoku (10%)", r.ichimoku, conds(L.ichimoku, r.hits.ichimoku))}
+    ${sec("Setup (điểm mua)", r.setup, conds(L.setup, r.hits.setup) + `<li class="no"><span>Pivot ${px(x.pivot)} · nền ${fmt(x.base_range_pct, 1)}% · cách đỉnh 52T ${fmt(x.from_high_pct, 1)}%</span></li>`)}
+    ${sec("Risk (càng cao càng nóng)", r.risk, conds(L.risk, r.risk_hits) + `<li class="no"><span>Cách MA20 ${fmt(x.dist_ma20, 1)}% · ATR ${fmt(x.atr_pct, 2)}% (P ${fmt(r.atr_pct_rank, 0)}) · từ đỉnh 20 phiên ${fmt(x.drawdown20, 1)}%</span></li>`)}
+    <button style="margin-top:12px;width:100%" id="btnAccChart">Xem biểu đồ ${esc(r.symbol)}</button>`;
+  $("btnAccChart").onclick = () => openStock(r.symbol);
+}
+function accCsv() {
+  const rows = accRows(); if (!rows.length) return;
+  const P = ["1M", "3M", "6M", "12M"];
+  const cols = [["Rank", r => r.rank], ["Symbol", r => r.symbol], ["Sector", r => r.sector || ""], ["Date", r => r.date],
+    ["Close", r => r.close], ["Change%", r => r.change_pct],
+    ...P.map(k => [`RS_${k}`, r => r.p[k]]), ...P.map(k => [`Excess_${k}%`, r => r.excess[k]]),
+    ["RS_Score", r => r.rs], ["RS_Swing", r => r.rs_swing], ["RS_Position", r => r.rs_position], ["Trend_Score", r => r.trend],
+    ["Momentum_Score", r => r.momentum], ["Flow_Score", r => r.flow], ["Ichimoku_Score", r => r.ichimoku],
+    ["Swing_Score", r => r.swing], ["Position_Score", r => r.position], ["Combined_Score", r => r.combined],
+    ["Prev_Combined", r => r.prev_combined], ["Delta", r => r.delta], ["Prev_Rank", r => r.prev_rank],
+    ["Setup_Score", r => r.setup], ["Risk_Score", r => r.risk], ["Signal", r => r.signal]];
+  const q = v => v == null ? "" : /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v);
+  const csv = "﻿" + [cols.map(c => c[0]).join(","), ...rows.map(r => cols.map(c => q(c[1](r))).join(","))].join("\r\n");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([csv], {type: "text/csv;charset=utf-8"}));
+  a.download = `acc_ranking_${(ACC.data.date || "").replace(/-/g, "")}_${ACC.mode}.csv`; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+$("accTable").onclick = e => {
+  const h = e.target.closest("th[data-k]");
+  if (h) { const k = h.dataset.k; ACC.dir = ACC.sort === k ? -ACC.dir : (k.startsWith("rank") || k === "symbol" || k === "risk" ? 1 : -1); ACC.sort = k; drawAcc(); return; }
+  const tr = e.target.closest("tr[data-s]"); if (!tr) return;
+  ACC.sel = tr.dataset.s; document.querySelectorAll("#accTable tr.sel").forEach(x => x.classList.remove("sel"));
+  tr.classList.add("sel"); drawAccDetail();
+};
+$("accTable").ondblclick = e => { const tr = e.target.closest("tr[data-s]"); if (tr) openStock(tr.dataset.s); };
+$("accOv").onclick = e => {
+  const a = e.target.closest("[data-asec]"); if (!a) return; e.preventDefault();
+  $("accSector").value = $("accSector").value === a.dataset.asec ? "" : a.dataset.asec; drawAcc();
+};
+document.querySelectorAll("#accModes .pill").forEach(b => b.onclick = () => {
+  ACC.mode = ACC.sort = b.dataset.m; ACC.dir = -1;
+  document.querySelectorAll("#accModes .pill").forEach(x => x.classList.toggle("active", x === b)); drawAcc();
+});
+$("accSearch").oninput = drawAcc;
+["accSector", "accMinS", "accMinRS", "accSetup", "accRisk", "accTrend", "accSig", "accTop"].forEach(id => $(id).onchange = drawAcc);
+$("btnAccCsv").onclick = accCsv;
+$("btnAccRefresh").onclick = async () => {
+  if (!confirm("Tính lại điểm ACC (và RS Rating của Scanner) cho toàn bộ các mã với dữ liệu mới nhất (khoảng 1–2 phút)?")) return;
+  try { await api("/api/board/strength/refresh", {method: "POST"}); loadAcc(); }
+  catch (e) { $("accStatus").innerHTML = `<span class="err">${esc(e.message)}</span>`; }
+};
+
+// ---------------- Bảng điện ----------------
+const BD = { filter: "all", timer: null, last: {}, data: null };
+const kl = v => !v ? "" : v >= 1e6 ? fmt(v/1e6,1) + "M" : v >= 1e3 ? fmt(v/1e3,1) + "K" : fmt(v);
+const ty = v => fmt(v/1e9, 0);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function qClass(q) {
+  if (["ceil", "floor", "ref", "none"].includes(q.state)) return "s-" + q.state;
+  const a = Math.abs(q.change_pct), lv = a >= 4 ? 4 : a >= 2 ? 3 : a >= 1 ? 2 : 1;
+  return (q.change_pct > 0 ? "s-up" : "s-dn") + lv;
+}
+// "Quan Tâm" = the user's own list, kept in this browser (same key as the old "Danh mục" box)
+const parseSyms = t => [...new Set(String(t || "").split(/[\s,;]+/).map(s => s.trim().toUpperCase()).filter(s => /^[A-Z0-9]{2,10}$/.test(s)))];
+try { BD.watch = parseSyms(localStorage.getItem("pstock.watch")); } catch (e) { BD.watch = []; }
+const bdWatch = () => BD.watch;
+// The server copy (data/board_settings.json) is what the Telegram scheduler reads; localStorage is a cache.
+const saveSettings = body => api("/api/board/settings", {method: "PUT", body: JSON.stringify(body)});
+function setWatch(list) {
+  BD.watch = parseSyms(list.join(","));
+  try { localStorage.setItem("pstock.watch", BD.watch.join(", ")); } catch (e) {}
+  saveSettings({watch: BD.watch}).catch(e => console.error("Không lưu được danh sách Quan Tâm:", e));
+}
+async function syncSettings() {   // on page load: the server wins; a list only in this browser is uploaded once
+  try {
+    const s = await api("/api/board/settings");
+    if (s.watch.length) { BD.watch = s.watch; try { localStorage.setItem("pstock.watch", s.watch.join(", ")); } catch (e) {} }
+    else if (BD.watch.length) await saveSettings({watch: BD.watch});
+    let local = null; try { local = localStorage.getItem("pstock.tgThr"); } catch (e) {}
+    if (local && Number(local) !== s.threshold && s.threshold === 3) await saveSettings({threshold: Number(local)});
+    else { $("tgThr").value = s.threshold; try { localStorage.setItem("pstock.tgThr", String(s.threshold)); } catch (e) {} }
+    $("tgStart").value = s.board_start; $("tgEnd").value = s.board_end; $("tgInterval").value = s.board_interval;
+    drawAuto(s); loadSchedule();
+  } catch (e) { $("tgSettingStatus").innerHTML = `<span class="err">Không tải được cài đặt Telegram: ${esc(e.message)}</span>`; }
+}
+// Auto-send switches (board scheduler reads data/board_settings.json; daily script keeps its own schedule).
+const AUTO = [["auto_board", "tgAutoBoard", "lblAutoBoard"], ["auto_daily", "tgAutoDaily", "lblAutoDaily"]];
+function drawAuto(s) {
+  for (const [k, box, lbl] of AUTO) if (k in s) { $(box).checked = !!s[k]; $(lbl).classList.toggle("off", !s[k]); }
+}
+async function loadSchedule() {}
+for (const [k, box] of AUTO) $(box).onchange = async () => {
+  const want = $(box).checked;
+  $(box).disabled = true;
+  try { drawAuto(await api("/api/board/settings", {method: "PUT", body: JSON.stringify({[k]: want})})); loadSchedule(); }
+  catch (e) {
+    $(box).checked = !want; $(AUTO.find(x => x[1] === box)[2]).classList.toggle("off", !$(box).checked);
+    loadSchedule();
+    alert("Không lưu được cài đặt gửi tự động: " + e.message);
+  }
+  finally { $(box).disabled = false; }
+};
+function inSession() {
+  const d = new Date(), m = d.getHours() * 60 + d.getMinutes();
+  return d.getDay() > 0 && d.getDay() < 6 && m >= 8 * 60 + 45 && m <= 15 * 60 + 5;
+}
+const sign = v => (v > 0 ? "+" : "") + fmt(v, 2);
+// Index cards are built once (each holds a mini chart); later polls only update their text / chart data.
+const IC = { cards: {}, interval: 1, timer: null, data: null };
+try { if (localStorage.getItem("pstock.icTf") === "3") IC.interval = 3; } catch (e) {}
+const hhmm = t => new Date(t * 1000).toISOString().slice(11, 16);   // chart time = VN wall-clock as UTC
+function idxCard(label) {
+  if (IC.cards[label]) return IC.cards[label];
+  const row = $("bdIdx");
+  if (!Object.keys(IC.cards).length) row.innerHTML = "";
+  const el = document.createElement("div");
+  el.className = "idx";
+  el.innerHTML = '<div class="idx-txt"></div><div class="idx-chart"><span class="idx-arrow"></span><span class="idx-hover"></span></div>';
+  row.appendChild(el);
+  const box = el.querySelector(".idx-chart");
+  const chart = LightweightCharts.createChart(box, { autoSize: true,
+    layout: { background: { color: "transparent" }, textColor: "#8b95a1", fontSize: 10, attributionLogo: false },  // logo stays on the main chart
+    grid: { vertLines: { visible: false }, horzLines: { visible: false } },
+    rightPriceScale: { visible: false }, leftPriceScale: { visible: false },
+    timeScale: { visible: false, borderVisible: false, rightOffset: 1 },
+    crosshair: { mode: 0, horzLine: { visible: false, labelVisible: false }, vertLine: { labelVisible: false, color: "#4c5562", style: 2 } },
+    handleScroll: false, handleScale: false });
+  const vol = chart.addAreaSeries({ priceScaleId: "vol", lineColor: "rgba(135,190,235,.85)", topColor: "rgba(135,190,235,.45)",
+    bottomColor: "rgba(135,190,235,.05)", lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
+  chart.priceScale("vol").applyOptions({ scaleMargins: { top: 0.55, bottom: 0 } });
+  const line = chart.addBaselineSeries({ baseValue: { type: "price", price: 0 }, lineWidth: 2,
+    topLineColor: "#2ecc40", bottomLineColor: "#e2483d",
+    topFillColor1: "rgba(46,204,64,0)", topFillColor2: "rgba(46,204,64,0)",
+    bottomFillColor1: "rgba(226,72,61,0)", bottomFillColor2: "rgba(226,72,61,0)",
+    priceLineVisible: false, lastValueVisible: false, crosshairMarkerRadius: 3 });
+  // today's reference level: a dashed yellow line over the whole session (09:00-14:45), so it is always on screen
+  // (it is part of the autoscale) and the time axis starts at 09:00 even before the first bar
+  const refSeries = chart.addLineSeries({ color: "rgba(240,200,60,.9)", lineWidth: 1, lineStyle: 2,
+    priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
+  chart.priceScale("right").applyOptions({ scaleMargins: { top: 0.08, bottom: 0.22 } });
+  const card = { el, txt: el.querySelector(".idx-txt"), arrow: el.querySelector(".idx-arrow"), chart, line, vol, refSeries, ref: null, axis: [] };
+  const hover = el.querySelector(".idx-hover");
+  chart.subscribeCrosshairMove(prm => {
+    const d = prm.time ? prm.seriesData.get(line) : null;
+    hover.textContent = d ? `${hhmm(prm.time)} · ${fmt(d.value, 2)}` + (card.ref ? ` (${sign((d.value / card.ref - 1) * 100)}%)` : "") : "";
+  });
+  IC.cards[label] = card;
+  return card;
+}
+function setRef(card, ref) {
+  card.ref = ref || null;
+  if (ref) card.line.applyOptions({ baseValue: { type: "price", price: ref } });
+  card.refSeries.setData(ref ? card.axis.map(t => ({ time: t, value: ref })) : []);
+}
+function drawIndexes(list) {
+  if (!list || !list.length) return;
+  for (const i of list) {
+    const c = idxCard(i.label);
+    c.txt.innerHTML = `<div class="n"><span>${i.label}</span><span>${ty(i.total_value)} tỷ</span></div>
+      <div class="v ${cls(i.change)}">${fmt(i.value,2)} <span style="font-size:13px">${sign(i.change)} (${sign(i.change_pct)}%)</span></div>
+      <div class="b"><span class="pos">▲ ${i.up} (${i.ceil})</span> · <span style="color:var(--warn)">■ ${i.flat}</span> · <span class="neg">▼ ${i.down} (${i.floor})</span></div>`;
+    c.arrow.className = "idx-arrow " + (i.change > 0 ? "up" : i.change < 0 ? "down" : "");
+    c.arrow.textContent = i.change > 0 ? "▲" : i.change < 0 ? "▼" : "";
+  }
+}
+function drawIndexCharts(list) {
+  for (const x of list) {
+    const c = idxCard(x.label);
+    // session axis 09:00-14:45 (+ any bar time outside it), the reference line spans all of it
+    c.axis = [...new Set([...(x.axis || []), ...x.bars.map(b => b.time)])].sort((a, b) => a - b);
+    setRef(c, x.ref);
+    c.line.setData(x.bars.map(b => ({ time: b.time, value: b.value })));
+    c.vol.setData(x.bars.map(b => ({ time: b.time, value: b.volume })));
+    c.chart.timeScale().fitContent();
+  }
+  const d = list.find(x => x.date);
+  const today = new Date().toLocaleDateString("en-CA");
+  $("icInfo").textContent = d && d.date !== today ? `(phiên ${d.date.split("-").reverse().join("/")})` : "";
+}
+async function loadIndexCharts() {
+  clearTimeout(IC.timer);
+  try { drawIndexCharts(await api(`/api/board/index-chart?interval=${IC.interval}`)); } catch (e) {}
+  IC.timer = setTimeout(loadIndexCharts, inSession() ? 30000 : 300000);
+}
+document.querySelectorAll("#icTf button").forEach(b => {
+  b.classList.toggle("active", Number(b.dataset.iv) === IC.interval);
+  b.onclick = () => {
+    IC.interval = Number(b.dataset.iv);
+    document.querySelectorAll("#icTf button").forEach(x => x.classList.toggle("active", x === b));
+    try { localStorage.setItem("pstock.icTf", String(IC.interval)); } catch (e) {}
+    loadIndexCharts();
+  };
+});
+// The global header's index cards: refreshed by the board's own polling on Bảng điện, by this loop on the other tabs
+const IDX = { timer: null };
+async function loadIndexes() {
+  clearTimeout(IDX.timer);
+  if ($("tab-board").classList.contains("hidden")) {
+    try { drawIndexes(await api("/api/board/indexes")); } catch (e) {}
+  }
+  IDX.timer = setTimeout(loadIndexes, inSession() ? 5000 : 60000);
+}
+function drawBoard(r) {
+  drawIndexes(r.indexes);
+  // pinned columns: 1 = Quan Tâm, 2 = VN30; the sort option only reorders the other sectors
+  const wg = r.groups.find(g => g.watchlist), vg = r.groups.find(g => g.pinned && !g.watchlist);
+  let groups = BD.filter === "all" ? r.groups.filter(g => !g.pinned) : [];
+  if ($("bdSort").checked) groups = [...groups].sort((a, b) => b.change_pct - a.change_pct);
+  const s = r.scores;
+  $("bdStatus").textContent = `Cập nhật ${r.updated}` + (s.done < s.total ? ` · đang tính điểm ${s.done}/${s.total}` : "");
+  const changed = new Set();
+  for (const [sym, q] of Object.entries(r.quotes)) { if (BD.last[sym] != null && BD.last[sym] !== q.price) changed.add(sym); BD.last[sym] = q.price; }
+  const head = g => `<div class="sec-h"><b title="${esc(g.name)}">${esc(g.name)}</b>
+      <span class="${cls(g.change_pct)}">${sign(g.change_pct)}%</span></div>
+      <div class="sec-s"><span class="pos">▲${g.up}</span> <span style="color:var(--warn)">■${g.flat}</span> <span class="neg">▼${g.down}</span> · GT ${ty(g.value)} tỷ</div>`;
+  const cols = '<div class="q hd"><span>Mã</span><span title="Điểm kỹ thuật khung Ngày (−100…+100)">Điểm</span><span>Giá</span><span>+/-</span><span>KL</span></div>';
+  const card = g => `<div class="sec${g.pinned ? " pinned" : ""}">` + head(g) + cols + rows(g, false) + `</div>`;
+  // the Quan Tâm card keeps its add box (not redrawn, so typing isn't lost); only its header and rows are redrawn
+  if (wg) {
+    $("wHead").innerHTML = head(wg);
+    $("wRows").innerHTML = wg.symbols.length ? sortCols("watch") + rows({...wg, symbols: sortSymbols("watch", wg.symbols, r.quotes)}, true)
+      : '<div class="w-empty">Chưa có mã nào. Nhập mã ở ô trên rồi bấm + (hoặc Enter). Di chuột vào một mã rồi bấm ✕ để bỏ.</div>';
+  }
+  $("bdPinV").innerHTML = vg ? `<div class="sec pinned">` + head(vg) + sortCols("vn30") +
+    rows({...vg, symbols: sortSymbols("vn30", vg.symbols, r.quotes)}, false) + `</div>` : "";
+  $("bdPinV").classList.toggle("hidden", BD.filter !== "all");
+  $("bdBoard").innerHTML = groups.map(card).join("");
+  function rows(g, removable) { return g.symbols.map(sym => { const q = r.quotes[sym]; if (!q) return "";
+      const sc = q.score == null ? (s.done < s.total ? "…" : "–") : q.score;
+      const tip = `${q.symbol} · ${q.name}\nTC ${px(q.ref)} · Trần ${px(q.ceiling)} · Sàn ${px(q.floor)}\nMở ${px(q.open)} · Cao ${px(q.high)} · Thấp ${px(q.low)}\n` +
+                  `KL ${fmt(q.volume)} · GT ${fmt(q.value/1e9,1)} tỷ\nNN mua ${fmt(q.foreign_buy)} · NN bán ${fmt(q.foreign_sell)}` + (q.rating ? `\nĐiểm ${q.score} ${q.rating}` : "");
+      return `<div class="q ${qClass(q)}${changed.has(sym) ? " flash" : ""}" data-s="${esc(q.symbol)}" title="${esc(tip)}"><b>${esc(q.symbol)}</b><span>${sc}</span>
+        <span>${px(q.price)}</span><span>${q.state === "none" ? "" : sign(q.change_pct) + "%"}</span><span>${kl(q.volume)}</span>` +
+        (removable ? `<i class="x" data-x="${esc(q.symbol)}" title="Bỏ ${esc(q.symbol)} khỏi Quan tâm">✕</i>` : "") + `</div>`; }).join(""); }
+}
+const tgThr = () => Number($("tgThr").value) || 3;
+function tgCount() {
+  if (!BD.data) return;
+  const th = tgThr(), qs = Object.values(BD.data.quotes).filter(q => q.state !== "none");
+  const up = qs.filter(q => q.change_pct >= th).length, dn = qs.filter(q => q.change_pct <= -th).length;
+  $("tgCount").innerHTML = `hiện có <span class="pos">${up} mã mạnh</span> · <span class="neg">${dn} mã yếu</span>`;
+}
+async function tgSend(dry) {
+  const th = tgThr();
+  $("tgBox").classList.remove("hidden");
+  if (!(th > 0 && th <= 15)) { $("tgStatus").innerHTML = '<span class="err">Ngưỡng phải từ 0.1 đến 15%</span>'; return; }
+  if (!dry && !confirm(`Gửi danh sách cổ phiếu mạnh (≥ +${th}%) và yếu (≤ −${th}%) tới Telegram?`)) return;
+  $("btnTgSend").disabled = $("btnTgPreview").disabled = true; $("tgStatus").textContent = dry ? "Đang tạo…" : "Đang gửi…";
+  try {
+    const r = await api("/api/board/telegram", {method:"POST", body: JSON.stringify({threshold: th, watch: bdWatch().join(","), dry_run: dry})});
+    $("tgPreview").innerHTML = r.message;
+    $("tgStatus").innerHTML = dry ? `Xem trước: ${r.strong} mạnh · ${r.weak} yếu · ${r.messages} tin`
+      : `<span class="pos">✓ Đã gửi ${r.sent} tin tới ${r.chats} chat lúc ${new Date().toLocaleTimeString("vi-VN")}</span>`;
+  } catch (e) { $("tgStatus").innerHTML = `<span class="err">${esc(e.message)}</span>`; }
+  finally { $("btnTgSend").disabled = $("btnTgPreview").disabled = false; }
+}
+$("btnTgPreview").onclick = () => tgSend(true);
+$("btnTgClose").onclick = () => $("tgBox").classList.add("hidden");
+$("btnTgSend").onclick = () => tgSend(false);
+$("btnTgDaily").onclick = async () => {
+  $("tgBox").classList.remove("hidden");
+  $("tgStatus").textContent = "Đang quét toàn bộ mã của các bảng (khoảng 1–2 phút)…";
+  $("btnTgDaily").disabled = true;
+  try {
+    const r = await api("/api/board/daily", {method:"POST", body: JSON.stringify({dry_run: false})});
+    $("tgPreview").innerHTML = r.message;
+    $("tgStatus").innerHTML = `<span class="pos">✓ Đã quét ${r.scanned} mã, gửi bản tin BO/BD tới ${r.chats} chat</span>`;
+  } catch (e) { $("tgStatus").innerHTML = `<span class="err">${esc(e.message)}</span>`; }
+  finally { $("btnTgDaily").disabled = false; }
+};
+try { const v = localStorage.getItem("pstock.tgThr"); if (v) $("tgThr").value = v; } catch (e) {}
+$("tgThr").oninput = () => { try { localStorage.setItem("pstock.tgThr", $("tgThr").value); } catch (e) {} tgCount(); };
+async function saveTgSetting(body) {
+  $("tgSettingStatus").textContent = "Đang lưu…";
+  try {
+    const s = await saveSettings(body);
+    $("tgThr").value = s.threshold; $("tgStart").value = s.board_start;
+    $("tgEnd").value = s.board_end; $("tgInterval").value = s.board_interval;
+    drawAuto(s); tgCount(); loadSchedule();
+    $("tgSettingStatus").textContent = "Đã lưu";
+  } catch (e) {
+    $("tgSettingStatus").innerHTML = `<span class="err">${esc(e.message)}</span>`;
+    try {
+      const s = await api("/api/board/settings");
+      $("tgThr").value = s.threshold; $("tgStart").value = s.board_start;
+      $("tgEnd").value = s.board_end; $("tgInterval").value = s.board_interval;
+      drawAuto(s);
+    } catch (reloadError) { console.error("Không tải lại được cài đặt Telegram:", reloadError); }
+  }
+}
+$("tgThr").onchange = () => { const v = Number($("tgThr").value); if (v > 0 && v <= 15) saveTgSetting({threshold: v}); };
+for (const [id, key] of [["tgStart", "board_start"], ["tgEnd", "board_end"], ["tgInterval", "board_interval"]]) {
+  $(id).onchange = () => {
+    const value = id === "tgInterval" ? Number($(id).value) : $(id).value;
+    if (id === "tgInterval" && (!Number.isInteger(value) || value < 1 || value > 720)) return;
+    saveTgSetting({[key]: value});
+  };
+}
+
+// ---- Excel import / export of the sector lists ----
+function apiHeaders(extra = {}) {
+  const h = {...extra}; const k = $("apiKey"); if (k && k.value) h["X-API-Key"] = k.value; return h;
+}
+async function xlInfo() {
+  try {
+    const r = await api("/api/board/sectors");
+    $("xlInfo").textContent = `Đang dùng: ${r.custom ? "danh sách đã nhập" : "danh sách mặc định"} · ${r.groups} ngành · ${r.symbols} mã. ` +
+      "Mẫu: cột A = Ngành, cột B = Mã. Nhập sẽ xoá toàn bộ các bảng ngành hiện có rồi mới nạp file. Ngành “Quan Tâm” → bảng Quan Tâm, ngành “VN30” → bảng VN30 (không có thì dùng rổ VN30 thực tế).";
+  } catch (e) {}
+}
+$("xlMenu").addEventListener("toggle", () => $("xlMenu").open && xlInfo());
+document.addEventListener("click", e => { if (!$("xlMenu").contains(e.target)) $("xlMenu").open = false; });
+$("btnXlExport").onclick = async () => {
+  $("xlMenu").open = false;
+  try {
+    const r = await fetch("/api/board/sectors.xlsx?watch=" + encodeURIComponent(BD.watch.join(",")), {headers: apiHeaders()});
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
+    const name = (r.headers.get("Content-Disposition") || "").match(/filename="([^"]+)"/)?.[1] || "pstock_nganh.xlsx";
+    const a = Object.assign(document.createElement("a"), {href: URL.createObjectURL(await r.blob()), download: name});
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    $("bdStatus").textContent = `Đã xuất ${name}`;
+  } catch (e) { $("bdStatus").innerHTML = `<span class="err">Xuất Excel lỗi: ${esc(e.message)}</span>`; }
+};
+function clearBoard() {   // delete every drawn sector table before showing the new list
+  BD.data = null; BD.last = {};
+  $("bdBoard").innerHTML = '<div class="muted">Đang tải danh sách ngành mới…</div>';
+}
+$("btnXlImport").onclick = () => { $("xlMenu").open = false; $("xlFile").value = ""; $("xlFile").click(); };
+$("xlFile").onchange = async () => {
+  const f = $("xlFile").files[0]; if (!f) return;
+  if (!confirm(`Xoá toàn bộ các bảng ngành và mã hiện có, rồi nhập "${f.name}"?`)) return;
+  $("bdStatus").textContent = "Đang nhập…";
+  try {
+    const r = await fetch("/api/board/sectors/import?filename=" + encodeURIComponent(f.name),
+                          {method: "POST", body: f, headers: apiHeaders({"Content-Type": "application/octet-stream"})});
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.detail || r.statusText);
+    let msg = `Đã nhập ${d.groups} ngành · ${d.symbols} mã.`;
+    if (d.watch) { setWatch(d.watch); msg += `\nQuan Tâm: ${d.watch.length} mã.`; }
+    if (d.warning_count) msg += `\n\n${d.warning_count} dòng bị bỏ qua:\n` + d.warnings.join("\n") + (d.warning_count > d.warnings.length ? "\n…" : "");
+    alert(msg);
+    clearBoard(); loadBoard();
+  } catch (e) { $("bdStatus").innerHTML = `<span class="err">Nhập Excel lỗi: ${esc(e.message)}</span>`; }
+};
+$("btnXlReset").onclick = async () => {
+  $("xlMenu").open = false;
+  if (!confirm("Khôi phục danh sách ngành mặc định? Danh sách đã nhập sẽ bị xoá (nên xuất Excel để lưu lại trước).")) return;
+  try { const d = await api("/api/board/sectors", {method: "DELETE"}); $("bdStatus").textContent = `Đã khôi phục mặc định: ${d.groups} ngành · ${d.symbols} mã`; clearBoard(); loadBoard(); }
+  catch (e) { $("bdStatus").innerHTML = `<span class="err">${esc(e.message)}</span>`; }
+};
+
+async function loadBoard() {
+  clearTimeout(BD.timer);
+  if ($("tab-board").classList.contains("hidden")) return;
+  try {
+    const w = bdWatch();
+    BD.data = await api("/api/board" + (w.length ? "?watch=" + encodeURIComponent(w.join(",")) : ""));
+    const unknown = w.filter(sym => !BD.data.quotes[sym]);   // not on the price feed (typo, delisted)
+    if (unknown.length && Object.keys(BD.data.quotes).length) setWatch(BD.watch.filter(sym => !unknown.includes(sym)));
+    drawBoard(BD.data); tgCount();
+    if (unknown.length) $("bdStatus").innerHTML += ` · <span class="err">Không tìm thấy mã: ${esc(unknown.join(", "))}</span>`;
+  } catch (e) { $("bdStatus").innerHTML = `<span class="err">${esc(e.message)}</span>`; }
+  BD.timer = setTimeout(loadBoard, inSession() ? 5000 : 60000);
+}
+// Sorting of the two pinned tables only (Mã / +/- / KL), each with its own state, remembered in this browser.
+// Click: first direction -> reverse -> back to the default order (Quan Tâm: the order the symbols were added;
+// VN30: the server's, % change high to low).
+const SORT_FIRST = { symbol: 1, change_pct: -1, volume: -1 };
+const SORT_KEYS = { watch: "pstock.wSort", vn30: "pstock.vSort" };
+const SORTS = {};
+for (const [t, key] of Object.entries(SORT_KEYS)) {
+  SORTS[t] = { k: null, dir: -1 };
+  try { const s = JSON.parse(localStorage.getItem(key) || "{}"); if (SORT_FIRST[s.k]) SORTS[t] = s; } catch (e) {}
+}
+// the header row of a sortable table: Mã, +/- and KL are clickable
+function sortCols(t) {
+  const S = SORTS[t];
+  const h = (k, label, tip) => `<span class="wsort${S.k === k ? " on" : ""}" data-tbl="${t}" data-wk="${k}" title="${tip}">${label}${S.k === k ? (S.dir > 0 ? " ▲" : " ▼") : ""}</span>`;
+  return '<div class="q hd">' + h("symbol", "Mã", "Sắp xếp theo mã (A→Z / Z→A)") +
+    '<span title="Điểm kỹ thuật khung Ngày (−100…+100)">Điểm</span><span>Giá</span>' +
+    h("change_pct", "+/-", "Sắp xếp theo % thay đổi") + h("volume", "KL", "Sắp xếp theo khối lượng") + '</div>';
+}
+function sortSymbols(t, symbols, quotes) {
+  const { k, dir: d } = SORTS[t];
+  if (!k) return symbols;
+  return [...symbols].sort((a, b) => {
+    const qa = quotes[a], qb = quotes[b];
+    if (k === "symbol") return a.localeCompare(b) * d;
+    if (k === "change_pct") {   // untraded symbols always last
+      const na = !qa || qa.state === "none", nb = !qb || qb.state === "none";
+      if (na !== nb) return na ? 1 : -1;
+    }
+    return (((qa && qa[k]) || 0) - ((qb && qb[k]) || 0)) * d || a.localeCompare(b);
+  });
+}
+const openQuote = e => {
+  const h = e.target.closest("[data-wk]");
+  if (h) {
+    const k = h.dataset.wk, t = h.dataset.tbl, S = SORTS[t];
+    if (S.k !== k) SORTS[t] = { k, dir: SORT_FIRST[k] };
+    else if (S.dir === SORT_FIRST[k]) S.dir = -S.dir;
+    else SORTS[t] = { k: null, dir: -1 };
+    try { localStorage.setItem(SORT_KEYS[t], JSON.stringify(SORTS[t])); } catch (err) {}
+    if (BD.data) drawBoard(BD.data);
+    return;
+  }
+  const x = e.target.closest("[data-x]");
+  if (x) { setWatch(BD.watch.filter(sym => sym !== x.dataset.x)); x.closest(".q").remove(); loadBoard(); return; }
+  const el = e.target.closest(".q[data-s]"); if (el) openStock(el.dataset.s);
+};
+["bdBoard", "bdPinV", "wRows"].forEach(id => $(id).onclick = openQuote);
+$("wAdd").onsubmit = e => {
+  e.preventDefault();
+  const add = parseSyms($("wInput").value);
+  if (!add.length) return;
+  setWatch([...BD.watch, ...add]); $("wInput").value = "";
+  $("bdStatus").textContent = `Đã thêm ${add.join(", ")} vào Quan tâm…`;
+  loadBoard();
+};
+document.querySelectorAll(".bd-bar .pill").forEach(b => b.onclick = () => {
+  BD.filter = b.dataset.f; document.querySelectorAll(".bd-bar .pill").forEach(x => x.classList.toggle("active", x === b));
+  if (BD.data) drawBoard(BD.data);
+});
+$("bdSort").onchange = () => BD.data && drawBoard(BD.data);
+
+// ---------- Phân tích: Wyckoff (đếm ngang P&F) × Ichimoku ----------
+const WY = {tf: "1D", loaded: false, lines: [], seq: 0};
+const wyC = mk("wyChart", 520);
+const wyCandle = wyC.addCandlestickSeries({upColor:"#22a06b", downColor:"#e2483d", borderVisible:false, wickUpColor:"#22a06b", wickDownColor:"#e2483d", ...PX});
+const wyKijun = line(wyC, "#e5a50a", 1, PX), wyA = line(wyC, "#22a06b", 1, PX), wyB = line(wyC, "#e2483d", 1, PX);
+const wyTrTop = line(wyC, "#4c8dff", 2, PX), wyTrMid = line(wyC, "#4c8dff", 1, {lineStyle:2, ...PX}), wyTrBot = line(wyC, "#4c8dff", 2, PX);
+const wyLong = {};
+// price lines don't take part in autoscale: this invisible series (first/last bar at the min / max) keeps the nearest targets in view
+const wyRange = wyC.addLineSeries({color:"rgba(0,0,0,0)", lastValueVisible:false, priceLineVisible:false, crosshairMarkerVisible:false});
+const WY_STATUS = {breakout_up:["Đã phá vỡ lên (SOS)", "up"], breakout_down:["Đã phá vỡ xuống (SOW)", "dn"], inside:["Đang trong TR", "warn"], none:["Không thấy TR", ""]};
+const wyShort = s => s.replace(" (Tuần)", " W").replace(" (Ngày)", " D");
+const wyPct = v => (v > 0 ? "+" : "") + fmt(v, 1) + "%";
+function wyPriceLine(price, color, title, style = 2, width = 1) {
+  WY.lines.push(wyCandle.createPriceLine({price, color, lineWidth: width, lineStyle: style, axisLabelVisible: true, title}));
+}
+function wyDrawChart(d) {
+  WY.lines.forEach(l => wyCandle.removePriceLine(l)); WY.lines = [];
+  const ch = d.chart, b = ch.tr_box;
+  wyCandle.setData(ch.candles); wyKijun.setData(ch.kijun); wyA.setData(ch.senkou_a); wyB.setData(ch.senkou_b);
+  Object.entries(ch.long_kijun || {}).forEach(([n, s]) => {
+    if (!wyLong[n]) wyLong[n] = line(wyC, LONG_COLORS[n] || "#9aa4ae", n === "129" ? 2 : 1, PX);
+    wyLong[n].setData(s);
+  });
+  [[wyTrTop, b && b.top], [wyTrMid, b && (b.top + b.bottom) / 2], [wyTrBot, b && b.bottom]].forEach(([s, v]) =>
+    s.setData(b && b.from !== b.to ? [{time: b.from, value: v}, {time: b.to, value: v}] : []));
+  wyRange.setData([]);
+  if (d.targets) {
+    const up = d.tr.direction === "up", lo = [], hi = [];
+    d.targets.forEach(t => {
+      wyPriceLine(t.price, t.reached ? "#8b95a1" : "#e5a50a", `${t.key} ${px(t.price)}`, 2, 2);
+      if (Math.abs(t.pct) <= 70 || t.key === "T1") (t.price >= d.close ? hi : lo).push(t.price);
+    });
+    wyPriceLine(up ? d.tr.top : d.tr.bottom, "#4c8dff", up ? "Ice (đỉnh TR)" : "Đáy TR", 1);
+    const t0 = ch.candles[0].time, t1 = ch.candles[ch.candles.length - 1].time;
+    if (t0 !== t1) wyRange.setData([{time: t0, value: Math.min(...lo, d.tr.bottom, d.close)}, {time: t1, value: Math.max(...hi, d.tr.top, d.close)}]);
+    d.ichimoku.levels.filter(x => x.tf === "1W" && /kijun/.test(x.kind))
+      .forEach(x => wyPriceLine(x.price, x.kind === "kijun" ? "#e5a50a" : x.name.includes("129") ? "#ff7f50" : "#00bcd4", wyShort(x.name), 3));
+  }
+  const times = new Set(ch.candles.map(c => c.time)), MK = {
+    SOS:["belowBar", "#22a06b", "arrowUp"], LPS:["belowBar", "#22a06b", "arrowUp"], SPRING:["belowBar", "#4c8dff", "circle"],
+    SOW:["aboveBar", "#e2483d", "arrowDown"], LPSY:["aboveBar", "#e2483d", "arrowDown"], UT:["aboveBar", "#e5a50a", "circle"]};
+  wyCandle.setMarkers((d.events || []).filter(e => times.has(e.date) && MK[e.type])
+    .map(e => ({time: e.date, position: MK[e.type][0], color: MK[e.type][1], shape: MK[e.type][2], text: e.type}))
+    .sort((a, b2) => a.time < b2.time ? -1 : a.time > b2.time ? 1 : 0));
+  const n = ch.candles.length, vb = ch.view_bars || n;   // whole history loaded, zoomed on the recent bars
+  const ahead = ch.senkou_a.filter(p => p.time > ch.candles[n - 1].time).length;   // future cloud
+  if (vb < n) wyC.timeScale().setVisibleLogicalRange({from: n - vb, to: n + ahead + 2}); else wyC.timeScale().fitContent();
+}
+function wyDrawTr(d) {
+  const t = d.tr;
+  if (!t.found) { $("wyTr").innerHTML = `<span class="muted">${esc(d.message)}</span>`; return; }
+  const [lbl, kind] = WY_STATUS[t.status], p = d.pnf, up = t.direction === "up";
+  $("wyTr").innerHTML = `<div style="margin-bottom:8px"><span class="wy-tag ${kind}">${lbl}</span> <span class="wy-tag ${up ? "up" : "dn"}">${esc(t.phase)}</span>${d.manual ? ' <span class="wy-tag">chọn tay</span>' : ""}</div>
+    <table class="kv">
+      <tr><td>Vùng TR</td><td>${t.start} → ${t.end} · ${t.bars} nến</td></tr>
+      <tr><td>Đỉnh / Giữa / Đáy</td><td>${px(t.top)} / ${px(t.mid)} / ${px(t.bottom)} · rộng ${fmt(t.width_pct, 1)}%</td></tr>
+      <tr><td>Giá hiện tại</td><td>${px(d.close)} · ${fmt(t.position_pct, 0)}% biên độ TR</td></tr>
+      <tr><td>Chạm đỉnh / đáy</td><td>${t.touches_top} lần / ${t.touches_bottom} lần</td></tr>
+      <tr><td>Xu hướng trước TR</td><td class="${cls(t.prior_trend_pct)}">${wyPct(t.prior_trend_pct)}</td></tr>
+      <tr><td>KL nửa sau / nửa đầu</td><td>${t.vol_contraction == null ? "–" : fmt(t.vol_contraction, 2) + "x" + (t.vol_contraction < 0.9 ? " (cạn cung)" : "")}</td></tr>
+      <tr><td>Phá vỡ</td><td>${t.break_date ? `${t.break_date} · cách ${t.bars_since_break} nến · KL ${t.break_vol_ratio == null ? "–" : fmt(t.break_vol_ratio, 2) + "x"}` : "chưa"}</td></tr>
+      <tr><td>P&amp;F</td><td>box ${fmt(p.box)} · đảo chiều ${p.reversal} · <b>${p.count_columns} cột</b></td></tr>
+      <tr><td>Count</td><td><b>${px(p.count_points)}</b> (${fmt(p.count_pct, 0)}% giá) = ${p.count_columns} × ${px(p.box)} × ${p.reversal}</td></tr>
+    </table>`;
+}
+function wyDrawTargets(d) {
+  if (!d.targets) { $("wyTargets").innerHTML = ""; return; }
+  const zone = Object.fromEntries(d.confluence.zones.map(z => [z.target, z]));
+  $("wyTargets").innerHTML = "<tr><th>Mục tiêu</th><th>Giá</th><th>So với giá</th><th>Hợp lưu Ichimoku</th></tr>" + d.targets.map(t => {
+    const z = zone[t.key], m = z.matches.slice(0, 4).map(x => `${esc(x.name)} ${px(x.price)} <span class="muted">(${wyPct(x.diff_pct)})</span>`).join("<br>");
+    return `<tr><td><b>${t.key}</b> <span class="muted">${esc(t.label)}</span><br><span class="muted" style="font-size:11px">${esc(t.base)} ${d.tr.direction === "up" ? "+" : "−"} Count</span></td>
+      <td><b>${px(t.price)}</b>${t.capped ? ' <span class="wy-tag warn" title="Count lớn hơn giá">chặn</span>' : ""}${t.reached ? ' <span class="wy-tag up">đã đạt</span>' : ""}</td>
+      <td class="${cls(t.pct)}">${wyPct(t.pct)}</td>
+      <td style="white-space:normal"><span class="wy-tag ${z.golden ? "warn" : z.score >= 2 ? "up" : ""}">${z.golden ? "Vàng · " : ""}${z.rating}${z.score ? " " + z.score : ""}</span><br>${m || '<span class="muted">–</span>'}</td></tr>`;
+  }).join("");
+}
+function wyDrawScenarios(d) {
+  const sc = d.confluence && d.confluence.scenarios;
+  $("wyScen").innerHTML = !sc ? "–" : sc.map(s => `<div class="wy-sc ${s.code}"><b>${s.code} · ${esc(s.title)}</b><br>${esc(s.text)}<br><span class="act">→ ${esc(s.action)}</span></div>`).join("");
+}
+function wyDrawLadder(d) {
+  const items = d.ichimoku.levels.map(x => ({price: x.price, name: x.name, cls: x.tf === "1W" ? "W" : "", kind: x.kind, lv: x}));
+  const strong = new Set(((d.confluence || {}).obstacles || []).filter(o => o.strong).map(o => o.name + o.price));
+  items.forEach(i => { if (strong.has(i.name + i.price)) i.name = "⚠ " + i.name; });
+  items.push({price: d.close, name: "Giá hiện tại", cls: "px"});
+  if (d.tr.found) {
+    (d.targets || []).forEach(t => items.push({price: t.price, name: `${t.key} · ${t.label}`, cls: "tg"}));
+    items.push({price: d.tr.top, name: "Đỉnh TR", cls: "tr"}, {price: d.tr.mid, name: "Giữa TR", cls: "tr"}, {price: d.tr.bottom, name: "Đáy TR", cls: "tr"});
+  }
+  items.sort((a, b) => b.price - a.price);
+  $("wyLadder").innerHTML = "<tr><th>Giá</th><th>Mốc</th><th>So với giá</th></tr>" + items.map(i =>
+    `<tr class="${i.cls}"><td>${px(i.price)}</td><td>${esc(i.name)}${i.lv && i.lv.thickness_pct ? ` <span class="muted">(dày ${fmt(i.lv.thickness_pct, 1)}%)</span>` : ""}${i.lv && i.lv.date ? ` <span class="muted">${i.lv.date}</span>` : ""}</td>
+      <td class="${cls(i.price - d.close)}">${i.cls === "px" ? "" : wyPct((i.price / d.close - 1) * 100)}</td></tr>`).join("");
+}
+function wyDrawEvents(d) {
+  $("wyEvents").innerHTML = (d.events || []).length
+    ? "<tr><th>Ngày</th><th>Sự kiện</th><th>Giá</th><th>KL</th></tr>" + d.events.map(e =>
+        `<tr title="${esc(e.note)}"><td>${e.date}</td><td><b>${e.type}</b></td><td>${px(e.price)}</td><td>${e.vol_ratio == null ? "–" : fmt(e.vol_ratio, 2) + "x"}</td></tr>`).join("")
+    : '<tr><td class="muted">Chưa thấy Spring / UT / SOS / LPS.</td></tr>';
+  const r = d.risk;
+  $("wyRisk").innerHTML = r ? `<table class="kv"><tr><td>Vào</td><td>${px(r.entry)}</td></tr><tr><td>Dừng lỗ</td><td>${px(r.stop)} <span class="muted">(${esc(r.stop_name)})</span> · ATR14 ${px(r.atr)}</td></tr>
+    <tr><td>R:R</td><td>${r.rr.map(x => `${x.target}: <b>${x.rr == null ? "–" : fmt(x.rr, 1)}</b>`).join(" · ")}</td></tr></table>` : '<span class="muted">–</span>';
+}
+function wyPnf(d) {
+  const p = d.pnf; if (!p) { $("wyPnf").textContent = ""; return; }
+  const hi = Math.max(...p.columns.map(c => c.hi)), lo = Math.min(...p.columns.map(c => c.lo));
+  if (hi - lo > 150) { $("wyPnf").textContent = "Quá nhiều hàng để hiển thị — tăng box."; return; }
+  let out = "";
+  for (let r = hi; r >= lo; r--)
+    out += px(r * p.box).padStart(7) + " │" + p.columns.map(c => r <= c.hi && r >= c.lo ? (c.dir > 0 ? "X" : "O") : " ").join(" ") + "\n";
+  $("wyPnf").textContent = out + " ".repeat(8) + "└" + "──".repeat(p.columns.length) + `\n${p.columns.length} cột · box ${fmt(p.box)}đ`;
+}
+async function loadWy() {
+  const sym = $("wySym").value.trim().toUpperCase(); if (!sym) return;
+  $("wySym").value = sym;
+  const q = new URLSearchParams({timeframe: WY.tf, reversal: $("wyRev").value, tol: $("wyTol").value, direction: $("wyDir").value});
+  [["start", "wyStart"], ["end", "wyEnd"], ["box", "wyBox"]].forEach(([k, id]) => $(id).value && q.set(k, $(id).value));
+  $("btnWy").disabled = true; $("wyStatus").textContent = "Đang phân tích…";
+  const seq = ++WY.seq;   // changing several inputs quickly fires several requests: only the last one may draw
+  try {
+    const d = await api(`/api/analysis/${encodeURIComponent(sym)}/wyckoff?${q}`);
+    if (seq !== WY.seq) return;
+    WY.data = d;
+    $("wyTitle").textContent = `${d.symbol} · ${d.timeframe === "1W" ? "Tuần" : "Ngày"} · ${d.date} · nguồn: ${d.source}`;
+    $("wyStatus").textContent = d.tr.found ? "" : d.message;
+    $("wyWarn").innerHTML = (d.warnings || []).map(w => `<div class="wy-warn">⚠ ${esc(w)}</div>`).join("");
+    wyDrawChart(d); wyDrawTr(d); wyDrawTargets(d); wyDrawScenarios(d); wyDrawLadder(d); wyDrawEvents(d); wyPnf(d);
+  } catch (e) { if (seq === WY.seq) $("wyStatus").innerHTML = `<span class="err">${esc(e.message)}</span>`; }
+  finally { if (seq === WY.seq) $("btnWy").disabled = false; }
+}
+$("btnWy").onclick = loadWy;
+$("wySym").addEventListener("keydown", e => e.key === "Enter" && loadWy());
+["wyRev", "wyTol", "wyDir", "wyStart", "wyEnd", "wyBox"].forEach(id => $(id).onchange = loadWy);
+$("btnWyAuto").onclick = () => { ["wyStart", "wyEnd", "wyBox"].forEach(id => $(id).value = ""); $("wyDir").value = "auto"; loadWy(); };
+$("btnWyChart").onclick = () => openStock($("wySym").value.trim().toUpperCase() || "FPT");
+$("btnEod").onclick = () => { $("eodFile").value = ""; $("eodFile").click(); };
+$("eodFile").onchange = async () => {   // End-Of-Day history import (1D cache), one request per file
+  const files = [...$("eodFile").files]; if (!files.length) return;
+  $("btnEod").disabled = true;
+  const lines = [], errs = [];
+  let syms = 0, bars = 0, cw = 0;
+  try {
+    for (const [i, f] of files.entries()) {
+      $("wyStatus").textContent = `Đang import ${i + 1}/${files.length}: ${f.name} (${fmt(f.size / 1048576, 1)} MB)…`;
+      try {
+        const r = await fetch("/api/analysis/eod/import?filename=" + encodeURIComponent(f.name),
+                              {method: "POST", body: f, headers: apiHeaders({"Content-Type": "application/octet-stream"})});
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.detail || r.statusText);
+        syms += d.symbols; bars += d.new_bars; cw += d.skipped_cw;
+        lines.push(`${f.name}: ${fmt(d.symbols)} mã · ${fmt(d.bars)} phiên (${d.first} → ${d.last}) · ${fmt(d.new_bars)} phiên mới`
+          + (d.new_symbols ? ` · ${fmt(d.new_symbols)} mã chưa có cache` : "")
+          + (d.skipped_cw ? ` · bỏ ${fmt(d.skipped_cw)} dòng chứng quyền/ETF` : "")
+          + (d.skipped_other ? ` · bỏ ${fmt(d.skipped_other)} dòng chỉ số/khác` : "")
+          + (d.bad_rows ? ` · ${fmt(d.bad_rows)} dòng lỗi` : ""));
+      } catch (e) { errs.push(`${f.name}: ${e.message}`); }
+    }
+    $("wyStatus").textContent = `Import xong: ${fmt(syms)} mã · ${fmt(bars)} phiên mới` + (errs.length ? ` · ${errs.length} file lỗi` : "");
+    alert(lines.concat(errs.length ? ["", "Lỗi:", ...errs] : []).join("\n"));
+    if (lines.length) loadWy();
+  } finally { $("btnEod").disabled = false; }
+};
+document.querySelectorAll("#wyTf .pill").forEach(b => b.onclick = () => {
+  WY.tf = b.dataset.tf; document.querySelectorAll("#wyTf .pill").forEach(x => x.classList.toggle("active", x === b));
+  ["wyStart", "wyEnd"].forEach(id => $(id).value = ""); loadWy();
+});
+
+let STOCK_LOADED = false;
+function showTab(t) {
+  document.querySelectorAll(".tabs button").forEach(b => b.classList.toggle("active", b.dataset.tab === t));
+  for (const k of ["stock", "board", "scan", "acc", "analysis"]) $("tab-" + k).classList.toggle("hidden", t !== k);
+  if (t === "analysis" && !WY.loaded) { WY.loaded = true; loadWy(); }
+  if (t === "board") loadBoard(); else clearTimeout(BD.timer);
+  if (t === "scan") loadStrength(); else clearTimeout(ST.timer);
+  if (t === "acc") loadAcc(); else clearTimeout(ACC.timer);
+  if (t === "stock" && !STOCK_LOADED) { STOCK_LOADED = true; load(); }
+  history.replaceState(null, "", t === "board" ? location.pathname : "#" + t);
+}
+function openStock(sym) { const first = !STOCK_LOADED; $("symbol").value = sym; showTab("stock"); if (!first) load(sym); }
+document.querySelectorAll(".tabs button").forEach(b => b.onclick = () => showTab(b.dataset.tab));
+$("btnLoad").onclick = () => load(); $("btnAI").onclick = askAI; $("btnScan").onclick = scan;
+document.querySelectorAll("#tfBar button").forEach(b => b.onclick = () => {
+  TF = b.dataset.tf;
+  document.querySelectorAll("#tfBar button").forEach(x => x.classList.toggle("active", x === b));
+  load();
+});
+$("symbol").addEventListener("keydown", e => e.key === "Enter" && load());
+// Intraday Ichimoku BO bulletin (every board symbol, 30m / 60m): manual button, timeframe option, auto-send switch
+const BO_SLOTS = { "30m": "9:35, 10:05, 10:35, 11:05, 11:35, 13:35, 14:05, 14:35, 15:05",
+                   "1h": "10:05, 11:05, 11:35, 14:05, 15:05" };
+function drawBo(s) {
+  if (s.bo_tf) $("boTf").value = s.bo_tf;
+  if ("auto_bo" in s) { $("autoBo").checked = !!s.auto_bo; $("lblAutoBo").classList.toggle("off", !s.auto_bo); }
+  const lbl = $("boTf").value === "1h" ? "60m" : "30m";
+  $("btnBo").textContent = `Gửi BO ${lbl}`;
+  $("lblAutoBo").title = `Gửi tự động lúc ${BO_SLOTS[$("boTf").value]} (ngày giao dịch, chỉ khi có mã BO; app phải đang chạy)`;
+}
+async function saveBo(body) {
+  try { drawBo(await api("/api/board/settings", {method: "PUT", body: JSON.stringify(body)})); }
+  catch (e) { $("boBox").classList.remove("hidden"); $("boStatus").innerHTML = `<span class="err">${esc(e.message)}</span>`; }
+}
+$("boTf").onchange = () => { drawBo({}); saveBo({bo_tf: $("boTf").value}); };
+$("autoBo").onchange = () => saveBo({auto_bo: $("autoBo").checked});
+$("btnBoClose").onclick = () => $("boBox").classList.add("hidden");
+$("btnBo").onclick = async () => {
+  const tf = $("boTf").value, lbl = tf === "1h" ? "60m" : "30m";
+  $("boBox").classList.remove("hidden"); $("boPreview").innerHTML = "";
+  $("boStatus").textContent = `Đang quét BO khung ${lbl} toàn bộ mã của các bảng (khoảng 1 phút)…`;
+  $("btnBo").disabled = true;
+  try {
+    const r = await api("/api/board/bo", {method: "POST", body: JSON.stringify({timeframe: tf})});
+    $("boPreview").innerHTML = r.message;
+    $("boStatus").innerHTML = r.bo ? `<span class="pos">✓ ${r.bo} mã BO, đã gửi ${r.sent} tin tới ${r.chats} chat</span>`
+      : `Không có mã BO ở nến ${r.bar ? r.bar.slice(11) : "-"} — không gửi Telegram.`;
+  } catch (e) { $("boStatus").innerHTML = `<span class="err">${esc(e.message)}</span>`; }
+  finally { $("btnBo").disabled = false; }
+};
+api("/api/board/settings").then(drawBo).catch(() => {});
+syncSettings().finally(() => {   // the Quan Tâm list must be known before the first board load
+  showTab(["#stock", "#scan", "#acc", "#analysis"].includes(location.hash) ? location.hash.slice(1) : "board");
+  loadIndexes();
+  loadIndexCharts();
+});
+</script>
+</body>
+</html>

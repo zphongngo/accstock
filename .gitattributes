@@ -1,0 +1,4 @@
+# Line endings: shell scripts must stay LF (bash on Linux), .bat files CRLF (cmd misreads LF)
+accstock text eol=lf
+*.sh text eol=lf
+*.bat text eol=crlf
