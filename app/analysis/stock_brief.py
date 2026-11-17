@@ -51,11 +51,11 @@ def build_ck_message(a: dict, quote: dict | None = None) -> str:
     name = f" · {html.escape(quote['name'])}" if quote and quote.get("name") else ""
     out = [f"📈 <b>{sym}</b>{name}", table(a, quote), ""]
     if quote and quote.get("ref"):
-        traded = quote.get("state") != "none"
-        price = _px(quote["price"])
-        chg = f"{_pct(quote['change_pct'])}" if traded else "chưa khớp"
-        out.append(f"Giá {price} ({chg}) · KL {quote.get('volume', 0):,} · TC {_px(quote['ref'])} · "
-                   f"Trần {_px(quote['ceiling'])} · Sàn {_px(quote['floor'])}")
+        px = lambda k: _px(quote[k]) if quote.get(k) else "-"   # noqa: E731  (0 = not traded yet)
+        out += [f"TC {px('ref')} • Trần {px('ceiling')} • Sàn {px('floor')}",
+                f"Mở {px('open')} • Cao {px('high')} • Thấp {px('low')}",
+                f"KL {quote.get('volume') or 0:,} • GT {(quote.get('value') or 0) / 1e9:,.1f} tỷ",
+                f"NN mua {quote.get('foreign_buy') or 0:,} • NN bán {quote.get('foreign_sell') or 0:,}"]
     else:
         out.append(f"Giá {_px(a['close'])} ({_pct(a['change_pct'])}) · KL {a['volume'] or 0:,} · phiên {_dmy(a['date'])}")
     out.append(f"<b>Điểm {a['score']}</b> · {a['rating']} (khung Ngày, phiên {_dmy(a['date'])})")

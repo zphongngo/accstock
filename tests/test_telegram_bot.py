@@ -46,10 +46,12 @@ def test_handle_update_only_allowed_chats_and_fresh_messages():
 
 def test_ck_message_has_the_main_sections():
     a = analyze_dataframe("FPT", make_ohlcv(), "1D")
-    msg = build_ck_message(a, {"name": "FPT Corp", "price": 50400, "ref": 50000, "ceiling": 53500, "floor": 46500,
-                               "change_pct": 0.8, "volume": 1234500, "state": "up"})
-    for part in ("<b>FPT</b> · FPT Corp", "Giá 50.40 (+0.80%)", "TC 50.00", f"Điểm {a['score']}", "Ichimoku",
-                 "MACD", "RSI", "Kháng cự 20p", "không phải khuyến nghị"):
+    msg = build_ck_message(a, {"name": "FPT Corp", "price": 48500, "ref": 49400, "ceiling": 52800, "floor": 45950,
+                               "open": 49400, "high": 49700, "low": 48500, "change_pct": -1.82, "volume": 10825500,
+                               "value": 531.5e9, "foreign_buy": 1060618, "foreign_sell": 4049341, "state": "down"})
+    for part in ("<b>FPT</b> · FPT Corp", "\nTC 49.40 • Trần 52.80 • Sàn 45.95\nMở 49.40 • Cao 49.70 • Thấp 48.50\n"
+                 "KL 10,825,500 • GT 531.5 tỷ\nNN mua 1,060,618 • NN bán 4,049,341\n", f"Điểm {a['score']}",
+                 "Ichimoku", "MACD", "RSI", "Kháng cự 20p", "không phải khuyến nghị"):
         assert part in msg, part
     assert msg.count("<b>") == msg.count("</b>") and msg.count("<i>") == msg.count("</i>")
 
