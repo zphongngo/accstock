@@ -88,6 +88,12 @@
   .idx .v { font-size:18px; font-weight:700; white-space:nowrap; }
   .idx .b { font-size:11px; color:var(--muted); }
   /* intraday mini chart of each index: green above / red below the reference (dashed), volume in light blue */
+  #priceChart, #wyChart { position:relative; }
+  .chart-tip { position:absolute; z-index:5; pointer-events:none; display:none; min-width:130px;
+    background:rgba(23,29,36,.94); border:1px solid #2a323c; border-radius:6px; padding:6px 9px;
+    font-size:12px; line-height:1.55; color:#d7dde4; box-shadow:0 4px 14px rgba(0,0,0,.35); }
+  .chart-tip b { display:block; color:#8b95a1; font-weight:500; margin-bottom:2px; }
+  .chart-tip span { float:right; margin-left:14px; font-variant-numeric:tabular-nums; }
   .idx-chart { position:relative; height:64px; margin:6px -6px -2px; }
   .idx-arrow { position:absolute; left:50%; top:50%; transform:translate(-50%,-55%); font-size:40px; line-height:1;
                pointer-events:none; z-index:2; opacity:.28; }
@@ -288,9 +294,11 @@
           <span><i style="background:#00bcd4"></i>Kijun 65</span><span><i style="background:#ff7f50;height:4px"></i>Kijun 129 (Dao Găm)</span>
           <span>▲ Breakout ▼ Breakdown</span>
         </div>
+        <div class="sublabel"><b>MACD (12, 26, 9)</b> · <span style="color:#4c8dff">━ MACD</span> · <span style="color:#e5a50a">━ Signal</span> · <span class="pos">▮</span><span class="neg">▮</span> Histogram (MACD − Signal) · đồng</div>
         <div id="macdChart"></div>
+        <div class="sublabel"><b>RSI (14)</b> · <span style="color:#b58cff">━ RSI</span> · nét đứt 70 quá mua / 30 quá bán</div>
         <div id="rsiChart"></div>
-        <div class="sublabel">Điểm kỹ thuật (−100…+100) · <span class="pos">≥ 60 Strong Bullish</span> · <span class="pos">≥ 25 Bullish</span> · Neutral · <span class="neg">≤ −25 Bearish</span> · <span class="neg">≤ −60 Strong Bearish</span></div>
+        <div class="sublabel"><b>Điểm kỹ thuật</b> (−100…+100) · <span class="pos">≥ 60 Strong Bullish</span> · <span class="pos">≥ 25 Bullish</span> · Neutral · <span class="neg">≤ −25 Bearish</span> · <span class="neg">≤ −60 Strong Bearish</span></div>
         <div id="scoreChart"></div>
       </div>
       <div>
@@ -460,6 +468,7 @@
         <label>Đảo chiều <select id="wyRev"><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option></select> box</label>
         <label>Hợp lưu ± <select id="wyTol"><option>1</option><option>2</option><option selected>3</option><option>5</option></select> %</label>
         <label>Hướng <select id="wyDir"><option value="auto">Tự động</option><option value="up">Lên (tích lũy)</option><option value="down">Xuống (phân phối)</option></select></label>
+        <label title="Hiện / ẩn Ichimoku trên biểu đồ: Kijun, mây (Senkou A/B), Kijun 65/129 và các mốc Kijun Tuần"><input type="checkbox" id="wyIchi" checked> Ichimoku</label>
         <button class="secondary" id="btnWyAuto" title="Xóa TR / box chọn tay, dò lại tự động">↺ Tự động</button>
         <button class="secondary" id="btnWyChart" title="Mở biểu đồ kỹ thuật chi tiết của mã này">📈 Biểu đồ</button>
         <button class="secondary" id="btnEod" title="Nhập dữ liệu End Of Day (khung Ngày) từ file CSV CafeF: &lt;Ticker&gt;,&lt;DTYYYYMMDD&gt;,&lt;Open&gt;,&lt;High&gt;,&lt;Low&gt;,&lt;Close&gt;,&lt;Volume&gt; (giá nghìn đồng, nên dùng giá đã điều chỉnh) hoặc file .zip chứa các file đó. Chọn được nhiều file. Bỏ qua mã chứng quyền / ETF (8 ký tự) và chỉ số. Dữ liệu được ghép vào cache Ngày; các phiên mới sau đó vẫn tự cập nhật từ Vietcap / SSI.">⬆️ Import EOD</button>
@@ -533,6 +542,30 @@ const base = { layout:{background:{color:"#171d24"}, textColor:"#8b95a1"},
   grid:{vertLines:{color:"#20272f"}, horzLines:{color:"#20272f"}}, rightPriceScale:{borderColor:"#2a323c"},
   timeScale:{borderColor:"#2a323c"}, crosshair:{mode:0} };
 const mk = (el, h) => LightweightCharts.createChart($(el), {...base, height:h, autoSize:true});
+// Popup on the hovered candle: high / low / close / volume. `volOf(time, prm)` returns the bar's volume.
+function tipTime(t) {
+  if (typeof t === "number") { const s = new Date(t * 1000).toISOString(); return `${s.slice(11, 16)} ${s.slice(8, 10)}/${s.slice(5, 7)}/${s.slice(0, 4)}`; }
+  if (typeof t === "string") return t.split("-").reverse().join("/");
+  return t ? `${String(t.day).padStart(2, "0")}/${String(t.month).padStart(2, "0")}/${t.year}` : "";
+}
+function candleTip(chart, series, elId, volOf) {
+  const box = $(elId), tip = document.createElement("div");
+  tip.className = "chart-tip"; box.appendChild(tip);
+  chart.subscribeCrosshairMove(prm => {
+    const d = prm.time && prm.point ? prm.seriesData.get(series) : null;
+    if (!d || d.high == null) { tip.style.display = "none"; return; }
+    const v = volOf(prm.time, prm);
+    tip.innerHTML = `<b>${tipTime(prm.time)}</b>Cao nhất<span>${px(d.high)}</span><br>Thấp nhất<span>${px(d.low)}</span>` +
+      `<br>Đóng cửa<span class="${d.close >= d.open ? "pos" : "neg"}">${px(d.close)}</span>` +
+      `<br>Khối lượng<span>${v != null ? fmt(v) : "–"}</span>`;
+    tip.style.display = "block";
+    const w = tip.offsetWidth, h = tip.offsetHeight, W = box.clientWidth, H = box.clientHeight;
+    let x = prm.point.x + 16, y = prm.point.y + 16;
+    if (x + w > W - 60) x = prm.point.x - w - 16;    // keep clear of the price axis
+    if (y + h > H - 30) y = prm.point.y - h - 16;
+    tip.style.left = Math.max(4, x) + "px"; tip.style.top = Math.max(4, y) + "px";
+  });
+}
 const price = mk("priceChart", 420), macdC = mk("macdChart", 130), rsiC = mk("rsiChart", 130), scoreC = mk("scoreChart", 130);
 // Price axis in thousand VND with 2 decimals: 50400 -> 50.40 (minMove 10 VND = 0.01)
 const PRICE_FMT = {type:"custom", minMove:10, formatter: p => (p / 1000).toFixed(2)};
@@ -587,6 +620,7 @@ const tenkan = line(price, "#4c8dff", 1, PX), kijun = line(price, "#e5a50a", 1, 
 const LONG_COLORS = {"65":"#00bcd4", "129":"#ff7f50"};
 const longK = {};
 const vol = price.addHistogramSeries({priceScaleId:"vol", priceFormat:{type:"volume"}, priceLineVisible:false, lastValueVisible:false});
+candleTip(price, candle, "priceChart", (t, prm) => { const v = prm.seriesData.get(vol); return v ? v.value : null; });
 const volMa = line(price, "#8b95a1", 1, {priceScaleId:"vol"});
 price.priceScale("vol").applyOptions({scaleMargins:{top:0.8, bottom:0}});
 const hist = macdC.addHistogramSeries({priceLineVisible:false, lastValueVisible:false});
@@ -1399,12 +1433,15 @@ document.querySelectorAll(".bd-bar .pill").forEach(b => b.onclick = () => {
 $("bdSort").onchange = () => BD.data && drawBoard(BD.data);
 
 // ---------- Phân tích: Wyckoff (đếm ngang P&F) × Ichimoku ----------
-const WY = {tf: "1D", loaded: false, lines: [], seq: 0};
+const WY = {tf: "1D", loaded: false, lines: [], ichiLines: [], seq: 0, ichi: true};
+try { WY.ichi = localStorage.getItem("pstock.wyIchi") !== "0"; } catch (e) {}
 const wyC = mk("wyChart", 520);
 const wyCandle = wyC.addCandlestickSeries({upColor:"#22a06b", downColor:"#e2483d", borderVisible:false, wickUpColor:"#22a06b", wickDownColor:"#e2483d", ...PX});
 const wyKijun = line(wyC, "#e5a50a", 1, PX), wyA = line(wyC, "#22a06b", 1, PX), wyB = line(wyC, "#e2483d", 1, PX);
 const wyTrTop = line(wyC, "#4c8dff", 2, PX), wyTrMid = line(wyC, "#4c8dff", 1, {lineStyle:2, ...PX}), wyTrBot = line(wyC, "#4c8dff", 2, PX);
 const wyLong = {};
+const wyVol = new Map();
+candleTip(wyC, wyCandle, "wyChart", t => wyVol.get(typeof t === "object" && t ? `${t.year}-${String(t.month).padStart(2, "0")}-${String(t.day).padStart(2, "0")}` : t));
 // price lines don't take part in autoscale: this invisible series (first/last bar at the min / max) keeps the nearest targets in view
 const wyRange = wyC.addLineSeries({color:"rgba(0,0,0,0)", lastValueVisible:false, priceLineVisible:false, crosshairMarkerVisible:false});
 const WY_STATUS = {breakout_up:["Đã phá vỡ lên (SOS)", "up"], breakout_down:["Đã phá vỡ xuống (SOW)", "dn"], inside:["Đang trong TR", "warn"], none:["Không thấy TR", ""]};
@@ -1413,12 +1450,23 @@ const wyPct = v => (v > 0 ? "+" : "") + fmt(v, 1) + "%";
 function wyPriceLine(price, color, title, style = 2, width = 1) {
   WY.lines.push(wyCandle.createPriceLine({price, color, lineWidth: width, lineStyle: style, axisLabelVisible: true, title}));
 }
+// Ichimoku on the Phân tích chart (checkbox "Ichimoku"): Kijun, cloud edges, long Kijun lines and the weekly Kijun levels
+function wyShowIchi(on) {
+  WY.ichi = on;
+  [wyKijun, wyA, wyB, ...Object.values(wyLong)].forEach(s => s.applyOptions({visible: on}));
+  WY.ichiLines.forEach(l => l.applyOptions({lineVisible: on, axisLabelVisible: on}));
+  try { localStorage.setItem("pstock.wyIchi", on ? "1" : "0"); } catch (e) {}
+}
+$("wyIchi").checked = WY.ichi;
+$("wyIchi").onchange = () => wyShowIchi($("wyIchi").checked);
+wyShowIchi(WY.ichi);
 function wyDrawChart(d) {
-  WY.lines.forEach(l => wyCandle.removePriceLine(l)); WY.lines = [];
+  WY.lines.forEach(l => wyCandle.removePriceLine(l)); WY.lines = []; WY.ichiLines = [];
   const ch = d.chart, b = ch.tr_box;
+  wyVol.clear(); (ch.volume || []).forEach(v => wyVol.set(v.time, v.value));
   wyCandle.setData(ch.candles); wyKijun.setData(ch.kijun); wyA.setData(ch.senkou_a); wyB.setData(ch.senkou_b);
   Object.entries(ch.long_kijun || {}).forEach(([n, s]) => {
-    if (!wyLong[n]) wyLong[n] = line(wyC, LONG_COLORS[n] || "#9aa4ae", n === "129" ? 2 : 1, PX);
+    if (!wyLong[n]) { wyLong[n] = line(wyC, LONG_COLORS[n] || "#9aa4ae", n === "129" ? 2 : 1, PX); wyLong[n].applyOptions({visible: WY.ichi}); }
     wyLong[n].setData(s);
   });
   [[wyTrTop, b && b.top], [wyTrMid, b && (b.top + b.bottom) / 2], [wyTrBot, b && b.bottom]].forEach(([s, v]) =>
@@ -1434,7 +1482,12 @@ function wyDrawChart(d) {
     const t0 = ch.candles[0].time, t1 = ch.candles[ch.candles.length - 1].time;
     if (t0 !== t1) wyRange.setData([{time: t0, value: Math.min(...lo, d.tr.bottom, d.close)}, {time: t1, value: Math.max(...hi, d.tr.top, d.close)}]);
     d.ichimoku.levels.filter(x => x.tf === "1W" && /kijun/.test(x.kind))
-      .forEach(x => wyPriceLine(x.price, x.kind === "kijun" ? "#e5a50a" : x.name.includes("129") ? "#ff7f50" : "#00bcd4", wyShort(x.name), 3));
+      .forEach(x => {
+        wyPriceLine(x.price, x.kind === "kijun" ? "#e5a50a" : x.name.includes("129") ? "#ff7f50" : "#00bcd4", wyShort(x.name), 3);
+        const l = WY.lines[WY.lines.length - 1];
+        WY.ichiLines.push(l);
+        if (!WY.ichi) l.applyOptions({lineVisible: false, axisLabelVisible: false});
+      });
   }
   const times = new Set(ch.candles.map(c => c.time)), MK = {
     SOS:["belowBar", "#22a06b", "arrowUp"], LPS:["belowBar", "#22a06b", "arrowUp"], SPRING:["belowBar", "#4c8dff", "circle"],
